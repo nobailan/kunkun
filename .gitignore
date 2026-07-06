@@ -1,0 +1,45 @@
+# ── Python ──────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.sublime-*
+
+# ── Virtual env ──────────────────────
+.venv/
+venv/
+env/
+.env
+!.env.example
+
+# ── IDE ──────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS ───────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ── Claude Code ──────────────────────
+.claude/
+
+# ── Docs (本地设计文档) ──────────────
+document/
+
+# ── Kun ──────────────────────────────
+.kun/reports/
+
+# ── Jupyter ──────────────────────────
+.ipynb_checkpoints/
+
+# ── Test ─────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
