@@ -1,16 +1,20 @@
-"""工具注册中心 (简化的 registry.py).
+"""Tool registry (simplified).
 
-v0.1: 手动注册，后续版本可升级为 AST 扫描自发现 (借鉴 Hermes tools/registry.py).
+v0.1: Manual registration, v0.2+: AST scan auto-discovery (inspired by Hermes tools/registry.py).
 """
+
+from __future__ import annotations
+
+from typing import Optional
 
 from kun.tools.decorators import ToolRegistry
 
-# 全局单例 (借鉴 cc-haha getTools() 模式)
-_registry: ToolRegistry | None = None
+# Global singleton (inspired by cc-haha getTools() pattern)
+_registry: Optional[ToolRegistry] = None
 
 
 def get_registry() -> ToolRegistry:
-    """获取全局工具注册中心."""
+    """Get global tool registry."""
     global _registry
     if _registry is None:
         _registry = ToolRegistry()
@@ -18,6 +22,6 @@ def get_registry() -> ToolRegistry:
 
 
 def reset_registry() -> None:
-    """重置注册中心 (测试用)."""
+    """Reset registry (for testing)."""
     global _registry
     _registry = ToolRegistry()

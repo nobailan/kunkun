@@ -1,4 +1,4 @@
-"""DS-Harness 入口点.
+"""Kun 入口点.
 
 借鉴:
 - cc-haha src/entrypoints/cli.tsx — CLI 解析 + 模式分发
@@ -68,18 +68,15 @@ async def run_once(prompt: str, config: HarnessConfig) -> int:
         if config.verbose:
             print(f"\n{'─' * 40}")
             print(f"📊 执行报告")
+            print(f"   模型: {agent.state.model}")
             print(f"   轮次: {agent.state.current_turn}")
             print(f"   Token: {agent.state.total_tokens['input']:,} 入 / {agent.state.total_tokens['output']:,} 出")
             if agent.state.total_tokens.get('thinking', 0) > 0:
                 print(f"   Thinking: {agent.state.total_tokens['thinking']:,}")
             print(f"   工具调用: {len(agent.state.tool_calls)} 次")
-            est_cost = agent.llm.estimate_cost(
-                agent.state.model,
-                agent.state.total_tokens["input"],
-                agent.state.total_tokens["output"],
-                agent.state.total_tokens.get("thinking", 0),
-            )
-            print(f"   估算费用: ${est_cost:.4f}")
+            print(f"   重试次数: {agent._last_retry_count}")
+            print(f"   估算费用: ${agent.router.budget.spent_task:.4f}")
+            print(f"   执行日志: {agent.execution_log.flush()}")
 
         return 0
     except KeyboardInterrupt:
@@ -106,11 +103,16 @@ async def run_interactive(config: HarnessConfig) -> int:
         verbose=True,
     )
 
+    # v0.2: 加载记忆
+    memory_count = len(agent.memory.load())
+
     print("=" * 60)
-    print("  DS-Harness v0.1.0 — DeepSeek 专属编码 Agent")
-    print(f"  模型: {config.model}")
+    print("  Kun v0.2.0 — DeepSeek 专属编码 Agent")
+    print(f"  模型: {config.model} | 轻模型: {config.light_model}")
     print(f"  工作目录: {Path(config.workspace).resolve()}")
     print(f"  工具: {', '.join(agent.tools.list_names())}")
+    print(f"  记忆: {memory_count} 条 | 预算: ${agent.router.budget.daily_budget:.0f}/天")
+    print(f"  权限模式: {config.permission_mode}")
     print("=" * 60)
     print()
     print("输入任务开始 (输入 'exit' 或 'quit' 退出, Ctrl+C 中断)\n")
@@ -149,7 +151,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(
         prog="kun",
-        description="DS-Harness — DeepSeek 专属编码 Agent",
+        description="Kun (鲲) — DeepSeek 原生编码 Agent",
     )
 
     parser.add_argument(
@@ -187,7 +189,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--version",
         action="version",
-        version="kun 0.1.0",
+        version="kun 0.2.0",
     )
 
     return parser.parse_args(argv)

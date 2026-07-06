@@ -21,6 +21,7 @@ from typing import Any, AsyncGenerator
 
 import httpx
 
+from kun.core.error_recovery import ErrorClassifier, RetryPolicy
 from kun.core.events import Event, EventType
 from kun.core.state import HarnessConfig, Message, MessageRole, ContentBlock, ContentType
 
@@ -42,11 +43,20 @@ class LLMClient:
     - assistant 消息包含 reasoning_content (ThinkBlock)
     - 工具使用 function calling 格式
     - 流式 SSE chunks: {"choices": [{"delta": {"content": "...", "reasoning_content": "..."}}]}
+
+    v0.2: 添加错误恢复 (retry 429/5xx) + 超时控制
     """
 
     def __init__(self, config: HarnessConfig):
         self.config = config
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(120.0))
+        self.retry_policy = RetryPolicy(
+            base_delay=1.0,
+            max_delay=60.0,
+            max_retries=3,
+            jitter=0.3,
+        )
+        self._last_retry_count = 0
 
     async def stream(
         self,

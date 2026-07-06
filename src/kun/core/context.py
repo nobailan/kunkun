@@ -1,20 +1,23 @@
-"""上下文管理器 — 滑动窗口 + 首条永保留.
+"""上下文管理器 — 按轮次滑动窗口 + 首条永保留.
 
 借鉴:
 - cc-haha src/services/compact/autoCompact.ts — auto-compaction 触发逻辑
-- 20 题库 SlidingWindowManager — 首条 system + 首条 user 永保留
+- 20 题库 SlidingWindowManager — 按 user 切轮次，一轮要么全留要么全不留
 - Hermes agent/context_engine.py — ContextEngine ABC + 阈值控制
 
-v0.1 策略 (简化版):
-  - 首条 system prompt 永保留
-  - 首条 user 输入永保留
-  - 后续消息: 总 token ≤ max_tokens (默认 64K)
-  - 裁剪策略: FIFO 删除最旧的中间轮次
+核心策略 (v0.2 修复版):
+  1. 首条 system 永保留 (锚点)
+  2. 首条 user 永保留 (锚点)
+  3. 非锚点消息按 user 边界切分为"轮次"——一轮 = user + 后续 assistant/tool，直到下个 user
+  4. tool 消息不占 window_size 名额，但只保护被选中轮次内的 tool
+  5. 以轮次为单位从后往前选取，一轮要么全留要么全不留
+  6. 被跳过的连续轮次合并为一条占位消息
 
-v0.5 升级路径:
-  - LLM 摘要压缩 (借鉴 Hermes conversation_compression.py)
-  - 智能轮次保护 (protect_first_n + protect_last_n)
-  - FTS5 检索历史关键信息
+修复前的问题:
+  - "逐条检查 token 是否超限"的策略在长对话下产生碎片——裁剪后是零散的 tool 结果，
+    缺少上下文连贯性
+  - tool 消息的保留逻辑是全局的，会保留不在窗口内的旧 tool，导致孤立 tool
+  - window_size 被 tool 挤占后，剩余名额往尾部取，可能取到后一轮的片段
 """
 
 from __future__ import annotations
@@ -26,8 +29,10 @@ from kun.core.state import HarnessConfig, Message, MessageRole, ContentType
 
 logger = logging.getLogger(__name__)
 
+# ─── System Prompt ──────────────────────────────────────
+
 # 中文 System Prompt (DSv4 优化版)
-DS_SYSTEM_PROMPT = """你是 DS-Harness，一个基于 DeepSeek v4 模型的 AI 编码 Agent。
+DS_SYSTEM_PROMPT = """你是 Kun，一个基于 DeepSeek v4 模型的 AI 编码 Agent。
 
 ## 你的能力
 - 读写文件系统 (read_file, write_file)
@@ -58,38 +63,47 @@ DS_SYSTEM_PROMPT = """你是 DS-Harness，一个基于 DeepSeek v4 模型的 AI 
 
 
 class ContextManager:
-    """上下文管理器.
+    """上下文管理器 — 按轮次滑动窗口.
 
-    借鉴 cc-haha autoCompact + Hermes ContextEngine:
-    - trim(): 滑动窗口裁剪
+    借鉴 cc-haha autoCompact + 20 题库 SlidingWindowManager:
+    - trim(): 按轮次裁剪 → 一轮要么全留要么全不留
     - build_system_prompt(): 组装 system prompt
     - estimate_tokens(): token 估算
 
     Attributes:
         config: Harness 配置
         max_tokens: 上下文窗口上限 (token 数)
+        min_tool_keep: 每轮至少保留的 tool 消息数
     """
 
     # 中文约 2.5 chars/token, 英文约 4 chars/token
     CHARS_PER_TOKEN = 3
 
-    # 保留的最小上下文比例 (确保对话连贯性)
+    # 保留的最小上下文比例
     MIN_CONTEXT_RATIO = 0.3
 
-    def __init__(self, config: HarnessConfig):
+    def __init__(self, config: HarnessConfig, min_tool_keep: int = 3):
         self.config = config
         self.max_tokens = config.max_tokens_per_turn
+        self.min_tool_keep = min_tool_keep
 
     # ─── 公共 API ────────────────────────────────
 
     def trim(self, messages: list[Message]) -> list[Message]:
-        """滑动窗口裁剪消息历史.
+        """按轮次滑动窗口裁剪消息历史.
 
-        策略 (借鉴 20 题库 SlidingWindowManager):
-        1. 首条 system prompt 永保留
-        2. 首条 user 输入永保留
-        3. 最近 3 轮对话永保留 (protect_last_n)
-        4. 其余中间消息从旧到新删除，直到总 token ≤ max_tokens
+        策略 (借鉴 20 题库 SlidingWindowManager 修复版):
+        1. 找锚点: 首条 system + 首条 user → 永保留
+        2. 非锚点消息按 user 边界切轮次: 一轮 = user + 后续 assistant/tool
+        3. 从后往前以轮次为单位分配 token 预算:
+           - tool 消息不占 token 名额 (只受 min_tool_keep 限制)
+           - 一轮要么整轮保留，要么整轮跳过
+        4. 连续跳过的轮次合并为一条占位消息 `[上下文已省略 N 轮对话]`
+
+        这修掉了旧版"逐条检查 token"的三个 bug:
+        - bug①: tool 不再被孤立保留 → 选了 tool 等于选了它所在的整轮
+        - bug②: token 预算不再被 tool 挤占 → 分配可预测
+        - bug③: min_tool_keep 只作用于已选窗口内 → 不会越界拉入无上下文的旧 tool
 
         Args:
             messages: 完整消息历史
@@ -97,47 +111,154 @@ class ContextManager:
         Returns:
             裁剪后的消息列表
         """
-        if not messages:
-            return messages
-
-        # 快捷路径: 消息量小，无需裁剪
-        total = self._total_tokens(messages)
-        if total <= self.max_tokens:
-            return messages
-
         n = len(messages)
+        if n == 0:
+            return []
 
-        # 找出首条 system (如果有)
-        first_system_idx = -1
-        first_user_idx = -1
+        # ── Step 1: 找锚点 ──
+        first_system_idx: int | None = None
+        first_user_idx: int | None = None
+
         for i, msg in enumerate(messages):
-            if msg.role == MessageRole.SYSTEM and first_system_idx < 0:
+            if first_system_idx is None and msg.role == MessageRole.SYSTEM:
                 first_system_idx = i
-            if msg.role == MessageRole.USER and first_user_idx < 0:
+            if first_user_idx is None and msg.role == MessageRole.USER:
                 first_user_idx = i
+            if first_system_idx is not None and first_user_idx is not None:
+                break
 
-        # 保护集: 首条 system + 首条 user + 末尾 4 条
-        protected_indices: set[int] = set()
-        if first_system_idx >= 0:
-            protected_indices.add(first_system_idx)
-        if first_user_idx >= 0 and first_user_idx != first_system_idx:
-            protected_indices.add(first_user_idx)
-        # 保护最后 4 条消息 (约 2 轮对话)
-        for i in range(max(0, n - 4), n):
-            protected_indices.add(i)
+        anchors: set[int] = set()
+        if first_system_idx is not None:
+            anchors.add(first_system_idx)
+        if first_user_idx is not None:
+            anchors.add(first_user_idx)
 
-        # 构建结果: 保留 protected 消息，其余按需裁剪
-        result: list[Message] = []
-        for i, msg in enumerate(messages):
-            if i in protected_indices:
-                result.append(msg)
+        # 快捷路径: 锚点之外的 token 总量已经在预算内 → 无需裁剪
+        non_anchor_tokens = sum(
+            self._estimate_msg_tokens(m)
+            for i, m in enumerate(messages)
+            if i not in anchors
+        )
+        anchor_tokens = sum(
+            self._estimate_msg_tokens(messages[i])
+            for i in anchors
+        )
+        if anchor_tokens + non_anchor_tokens <= self.max_tokens:
+            return list(messages)
+
+        # ── Step 2: 非锚点消息按 user 边界切轮次 ──
+        non_anchor = [i for i in range(n) if i not in anchors]
+
+        turns: list[list[int]] = []  # 每个元素是一个轮次 (索引列表)
+        cur: list[int] = []
+
+        for i in non_anchor:
+            if messages[i].role == MessageRole.USER and cur:
+                turns.append(cur)
+                cur = []
+            cur.append(i)
+
+        if cur:
+            turns.append(cur)
+
+        if not turns:
+            return list(messages)  # 没有非锚点消息，直接返回
+
+        # ── Step 3: 从后往前选轮次，直到填满 token 预算 ──
+        kept: set[int] = set(anchors)
+        budget_used = anchor_tokens
+
+        for turn in reversed(turns):
+            # 计算本轮 token: tool 不占名额
+            regular = [i for i in turn if messages[i].role != MessageRole.USER or messages[i].role == MessageRole.USER]
+            # 重新定义: "普通消息" = user + assistant (不含 tool)
+            regular_indices = [
+                i for i in turn
+                if messages[i].role in (MessageRole.USER, MessageRole.ASSISTANT)
+            ]
+            regular_tokens = sum(
+                self._estimate_msg_tokens(messages[i]) for i in regular_indices
+            )
+            # tool 消息 token (不占预算，但会被 min_tool_keep 限制)
+            tool_indices = [
+                i for i in turn
+                if _is_tool_result(messages[i])
+            ]
+
+            if budget_used + regular_tokens <= self.max_tokens:
+                # 整轮放得下
+                for i in turn:
+                    kept.add(i)
+                budget_used += regular_tokens
             else:
-                # 检查当前 result 的 token 是否已超限
-                current_tokens = self._total_tokens(result)
-                if current_tokens + self._estimate_msg_tokens(msg) <= self.max_tokens:
-                    result.append(msg)
-                # else: 跳过此消息 (被裁剪)
+                # 放不下整轮 → 从该轮尾部截取不足的 regular 名额
+                remaining = self.max_tokens - budget_used
+                if remaining > 0 and regular_indices:
+                    # 从后往前取 regular 消息直到填满
+                    taken = []
+                    taken_tokens = 0
+                    for i in reversed(regular_indices):
+                        t = self._estimate_msg_tokens(messages[i])
+                        if taken_tokens + t <= remaining:
+                            taken.append(i)
+                            taken_tokens += t
+                        else:
+                            break
+                    # 保留截取到的 regular 消息
+                    for i in taken:
+                        kept.add(i)
+                    budget_used += taken_tokens
 
+                    # 保留这些 regular 之后的 tool (在截取范围内)
+                    if taken:
+                        min_kept = min(taken)
+                        for i in tool_indices:
+                            if i > min_kept:
+                                kept.add(i)
+                break  # 预算已满
+
+        # ── Step 4: 在已选窗口内限制 tool 消息数量 ──
+        kept_tools = [i for i in kept if _is_tool_result(messages[i])]
+        if len(kept_tools) > self.min_tool_keep:
+            # 保留最近的 min_tool_keep 条 tool
+            tools_sorted = sorted(kept_tools)
+            tools_to_remove = tools_sorted[:-self.min_tool_keep]
+            for i in tools_to_remove:
+                kept.discard(i)
+
+        # ── Step 5: 构建输出 ──
+        result: list[Message] = []
+        skipped_turns = 0
+        in_skip = False
+
+        # 统计轮次边界用于计数
+        turn_boundaries: set[int] = set()
+        for turn in turns:
+            if turn:
+                turn_boundaries.add(turn[0])  # 每轮第一条作为边界标记
+
+        for i in range(n):
+            if i in kept:
+                if in_skip and skipped_turns > 0:
+                    result.append(_make_placeholder(skipped_turns))
+                    skipped_turns = 0
+                    in_skip = False
+                result.append(messages[i])
+            else:
+                if not in_skip:
+                    in_skip = True
+                # 在轮次边界处计数
+                if i in turn_boundaries:
+                    skipped_turns += 1
+
+        # 末尾的跳过段
+        if in_skip and skipped_turns > 0:
+            result.append(_make_placeholder(skipped_turns))
+
+        logger.debug(
+            "trim: %d messages → %d messages (%d turns skipped)",
+            n, len(result), skipped_turns,
+        )
         return result
 
     def build_system_prompt(self) -> str:
@@ -175,8 +296,10 @@ class ContextManager:
         """估算单条消息的 token 数."""
         if isinstance(msg.content, str):
             base = self.estimate_tokens(msg.content)
-        else:
+        elif isinstance(msg.content, list):
             base = sum(self.estimate_tokens(str(c.content)) for c in msg.content)
+        else:
+            base = 0
 
         # 消息元数据开销 ~10 tokens
         return base + 10
@@ -229,3 +352,26 @@ class ContextManager:
             f"- Shell: {os.environ.get('SHELL', os.environ.get('COMSPEC', 'unknown'))}",
         ]
         return "\n".join(lines)
+
+
+# ─── 辅助函数 ──────────────────────────────────────────
+
+
+def _is_tool_result(msg: Message) -> bool:
+    """判断消息是否为 tool 结果."""
+    if isinstance(msg.content, list):
+        for block in msg.content:
+            if getattr(block, 'type', None) == ContentType.TOOL_RESULT:
+                return True
+    # 检查 tool_use_id 作为辅助判断
+    if msg.tool_use_id:
+        return True
+    return False
+
+
+def _make_placeholder(skipped_turns: int) -> Message:
+    """生成占位消息."""
+    return Message(
+        role=MessageRole.SYSTEM,
+        content=f"[上下文已省略 {skipped_turns} 轮对话]",
+    )

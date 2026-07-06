@@ -161,7 +161,7 @@ class AgentState:
 
 @dataclass
 class HarnessConfig:
-    """DS-Harness 全局配置.
+    """Kun 全局配置.
 
     借鉴 cc-haha QueryEngineConfig (src/QueryEngine.ts:130-173):
     - cwd, tools, maxTurns, maxBudgetUsd, thinkingConfig
@@ -198,11 +198,14 @@ class HarnessConfig:
 
     @classmethod
     def from_env(cls) -> "HarnessConfig":
-        """从环境变量加载配置."""
+        """Load config from environment variables."""
         import os
-        from dotenv import load_dotenv
 
-        load_dotenv()
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except ImportError:
+            pass
 
         return cls(
             model=os.getenv("KUN_MODEL", "deepseek-v4-pro"),
