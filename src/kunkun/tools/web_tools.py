@@ -71,7 +71,7 @@ async def webfetch_tool(args: WebFetchInput, ctx: ToolUseContext) -> ToolResult:
             response = await client.get(
                 url,
                 headers={
-                    "User-Agent": "Kun/0.4 (DeepSeek-native Agent)",
+                    "User-Agent": "Kunkun/0.4 (DeepSeek-native Agent)",
                     "Accept": "text/html,application/xhtml+xml,*/*",
                 },
             )
@@ -217,7 +217,7 @@ async def _ddg_search(query: str, num: int, proxy: str | None) -> ToolResult:
             response = await client.get(
                 search_url,
                 headers={
-                    "User-Agent": "Kun/0.4 (DeepSeek-native Agent)",
+                    "User-Agent": "Kunkun/0.4 (DeepSeek-native Agent)",
                     "Accept": "text/html",
                 },
             )

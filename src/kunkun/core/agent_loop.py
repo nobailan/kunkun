@@ -1,4 +1,4 @@
-"""Agent Loop — Kun 核心引擎.
+"""Agent Loop — Kunkun 核心引擎.
 
 借鉴:
 - cc-haha src/query.ts queryLoop() — while(true) + State 跨迭代
@@ -451,6 +451,9 @@ class AgentLoop:
         ctx.metadata["api_key"] = self.config.api_key
         ctx.metadata["base_url"] = self.config.base_url
         ctx.metadata["light_model"] = self.config.light_model
+        # v0.4.2: 传递父 Agent 引用给 agent 工具
+        ctx.metadata["_config"] = self.config
+        ctx.metadata["_agent_loop"] = self
         return ctx
 
     def _error_tool_result(self, tool_use_id: str, message: str) -> Message:

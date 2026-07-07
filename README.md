@@ -1,4 +1,4 @@
-# Kun (鲲)
+# Kunkun (鲲)
 
 > 小而能化大，终成鹏 — DeepSeek 原生编码 Agent
 
@@ -7,7 +7,7 @@
 
 ## 是什么
 
-Kun 是一个从 DeepSeek 模型特性出发设计的专属编码 Agent。不做"又一个 Claude Code 复刻"——做 DS 模型特性驱动的 Harness。
+Kunkun 是一个从 DeepSeek 模型特性出发设计的专属编码 Agent。不做"又一个 Claude Code 复刻"——做 DS 模型特性驱动的 Harness。
 
 | 特性 | 说明 |
 |------|------|
@@ -30,16 +30,16 @@ pip install kun
 
 ```bash
 # 单次执行
-kun "找出项目中所有的 Python 文件，统计每个文件的代码行数"
+kunkun "找出项目中所有的 Python 文件，统计每个文件的代码行数"
 
 # 交互模式
-kun-interactive
+kunkun-interactive
 ```
 
 ## 从源码安装
 
 ```bash
-git clone https://github.com/nobailan/kun.git
+git clone https://github.com/nobailan/kunkun.git
 cd kun
 pip install -e .
 ```

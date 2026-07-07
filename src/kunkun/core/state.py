@@ -161,7 +161,7 @@ class AgentState:
 
 @dataclass
 class HarnessConfig:
-    """Kun 全局配置.
+    """Kunkun 全局配置.
 
     借鉴 cc-haha QueryEngineConfig (src/QueryEngine.ts:130-173):
     - cwd, tools, maxTurns, maxBudgetUsd, thinkingConfig
