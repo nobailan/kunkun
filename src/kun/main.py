@@ -105,14 +105,16 @@ async def run_interactive(config: HarnessConfig) -> int:
 
     # v0.2: 加载记忆
     memory_count = len(agent.memory.load())
+    # v0.3: 加载 Skill
+    skill_count = len(agent.skills.load())
 
     print("=" * 60)
-    print("  Kun v0.2.0 — DeepSeek 专属编码 Agent")
+    print("  Kun v0.3.2 — DeepSeek 专属编码 Agent")
     print(f"  模型: {config.model} | 轻模型: {config.light_model}")
     print(f"  工作目录: {Path(config.workspace).resolve()}")
     print(f"  工具: {', '.join(agent.tools.list_names())}")
-    print(f"  记忆: {memory_count} 条 | 预算: ${agent.router.budget.daily_budget:.0f}/天")
-    print(f"  权限模式: {config.permission_mode}")
+    print(f"  记忆: {memory_count} 条 | Skill: {skill_count} 个")
+    print(f"  预算: ${agent.router.budget.daily_budget:.0f}/天 | 权限: {config.permission_mode}")
     print("=" * 60)
     print()
     print("输入任务开始 (输入 'exit' 或 'quit' 退出, Ctrl+C 中断)\n")
@@ -189,7 +191,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--version",
         action="version",
-        version="kun 0.2.0",
+        version="kun 0.3.2",
     )
 
     return parser.parse_args(argv)

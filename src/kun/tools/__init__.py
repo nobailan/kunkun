@@ -13,7 +13,7 @@ from kun.tools.bash_tool import bash_tool
 from kun.tools.read_file import read_file_tool
 from kun.tools.write_file import write_file_tool
 from kun.tools.glob_tool import glob_tool
-from kun.tools.remember_tool import remember_tool, recall_tool
+from kun.tools.remember_tool import remember_tool, recall_tool, skill_load_tool
 
 
 def init_tools() -> ToolRegistry:
@@ -29,5 +29,8 @@ def init_tools() -> ToolRegistry:
     # v0.2 记忆工具
     registry.register(remember_tool._tool_instance)
     registry.register(recall_tool._tool_instance)
+
+    # v0.3.1 Skill 加载工具
+    registry.register(skill_load_tool._tool_instance)
 
     return registry

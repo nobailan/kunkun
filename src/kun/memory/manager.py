@@ -184,10 +184,11 @@ class MemoryManager:
     def select(self, prompt: str, n: int = MAX_MEMORIES) -> list[Memory]:
         """根据 prompt 关键词选择最相关的记忆.
 
-        策略 (借鉴 Claude Code memory 加载):
-        1. 关键词匹配: name + description 中的词是否在 prompt 中出现
-        2. 排序: 按匹配得分降序
-        3. 截断: 取前 n 条
+        策略:
+        1. 如果总记忆数 ≤ n → 全部注入（无需筛选）
+        2. 超过 n 条时 → 用字符级 n-gram 匹配排序（兼容中英文）
+           - 中文: 2-4 字滑动窗口匹配
+           - 英文: 空格分词匹配
 
         Args:
             prompt: 用户输入的 prompt
@@ -202,66 +203,87 @@ class MemoryManager:
         if not prompt or not self._memories:
             return []
 
-        # 分词 (中文 + 英文)
+        # 快捷路径: 记忆不多 → 全部注入
+        if len(self._memories) <= n:
+            logger.debug("All %d memories injected (≤%d)", len(self._memories), n)
+            return list(self._memories)
+
+        # 超出上限 → 按相关性排序取前 n 条
         prompt_lower = prompt.lower()
         scored: list[tuple[Memory, int]] = []
 
         for mem in self._memories:
-            score = 0
             search_text = f"{mem.name} {mem.description}".lower()
+            score = self._relevance_score(prompt_lower, search_text)
 
-            # 完整词匹配 (高权重)
-            for word in search_text.split():
-                if word in prompt_lower:
-                    score += 3
-
-            # name 匹配 (最高权重)
-            name_parts = mem.name.replace("-", " ")
-            for part in name_parts.split():
-                if part in prompt_lower:
-                    score += 5
-
-            # description 中的关键词
-            desc_words = mem.description.lower().split()
-            for word in desc_words:
-                if len(word) >= 2 and word in prompt_lower:
-                    score += 1
+            # content 中的关键词也加分
+            content_lower = mem.content.lower()[:500]
+            score += self._relevance_score(prompt_lower, content_lower)
 
             if score > 0:
                 scored.append((mem, score))
 
-        # 按得分降序
         scored.sort(key=lambda x: x[1], reverse=True)
-
         result = [mem for mem, _ in scored[:n]]
+
         if result:
-            logger.debug(
-                "Selected %d memories for prompt: %s",
-                len(result),
-                prompt[:80],
-            )
+            logger.debug("Selected %d/%d memories", len(result), len(self._memories))
 
         return result
 
+    @staticmethod
+    def _relevance_score(query: str, target: str) -> int:
+        """计算 query 和 target 的相关性得分.
+
+        兼容中文（字符级 n-gram）和英文（空格分词）.
+        """
+        score = 0
+
+        # ── 英文路径: 空格分词 ──
+        words = [w for w in target.split() if len(w) >= 2]
+        for word in words:
+            if word in query:
+                score += 5  # 完整词命中 → 高权重
+
+        # ── 中文路径: 字符级 n-gram ──
+        # 从 target 中提取 2-4 字片段，检测是否在 query 中出现
+        if any('一' <= c <= '鿿' for c in target):
+            for n in (3, 2):  # 优先 3-gram（更精准）
+                for i in range(len(target) - n + 1):
+                    gram = target[i:i + n]
+                    # 只匹配含中文的片段
+                    if any('一' <= c <= '鿿' for c in gram):
+                        if gram in query:
+                            score += n  # 越长匹配权重越高
+
+        return score
+
     def format_for_system_prompt(self, memories: list[Memory]) -> str:
-        """将选中记忆格式化为 System Prompt 注入文本.
+        """将记忆元数据（name + description）注入 System Prompt.
+
+        不注入全文——只注入索引。Agent 看到索引后，自行判断是否需要用
+        recall 工具获取全文。语义相关性判断交给 LLM，而非关键词匹配。
 
         Args:
             memories: 要注入的记忆列表
 
         Returns:
-            格式化的文本
+            格式化的元数据索引
         """
         if not memories:
             return ""
 
-        lines = ["\n## 项目记忆\n"]
-        for i, mem in enumerate(memories, 1):
-            lines.append(f"### {i}. {mem.name}")
-            lines.append(f"_{mem.description}_")
-            lines.append("")
-            lines.append(mem.content[:2000])  # 截断长内容
-            lines.append("")
+        lines = [
+            "\n## 可用记忆索引",
+            f"共 {len(memories)} 条。当判断某条记忆与当前任务相关时，"
+            "用 recall 工具获取全文。",
+            "",
+        ]
+        for mem in memories:
+            desc = mem.description[:120]  # 截断描述
+            lines.append(f"- **{mem.name}**: {desc}")
+
+        lines.append("")
 
         return "\n".join(lines)
 
@@ -311,24 +333,39 @@ class MemoryManager:
     # ─── 搜索 ───────────────────────────────────
 
     def search(self, query: str) -> list[Memory]:
-        """全文搜索 (v0.2: 关键词匹配, v0.5+: FTS5).
+        """全文搜索 (字符级 n-gram 匹配, v0.5+: FTS5).
+
+        修复: 中文用 n-gram 匹配替代精确子串匹配，
+        "代码风格" 可以匹配到 "编码风格偏好"。
 
         Args:
             query: 搜索关键词
 
         Returns:
-            匹配的记忆列表
+            匹配的记忆列表（按相关性降序），无匹配时返回全部记忆
         """
         if not self._memories:
             self.load()
 
+        if not query or not query.strip():
+            return list(self._memories)
+
         query_lower = query.lower()
-        results = []
+        scored: list[tuple[Memory, int]] = []
 
         for mem in self._memories:
             text = f"{mem.name} {mem.description} {mem.content}".lower()
-            if query_lower in text:
-                results.append(mem)
+            score = self._relevance_score(query_lower, text)
+            if score > 0:
+                scored.append((mem, score))
+
+        scored.sort(key=lambda x: x[1], reverse=True)
+        results = [mem for mem, _ in scored]
+
+        # 无精确匹配 → 返回全部记忆（用户可能记不清确切关键词）
+        if not results:
+            logger.debug("No exact match for '%s', returning all %d memories", query, len(self._memories))
+            return list(self._memories)
 
         return results
 

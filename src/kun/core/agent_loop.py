@@ -47,6 +47,10 @@ from kun.core.state import (
 )
 from kun.memory.manager import MemoryManager
 from kun.routing.cost_router import CostRouter
+from kun.core.background_review import BackgroundReviewer
+from kun.skills.loader import SkillLoader
+from kun.skills.usage import SkillUsageStore
+from kun.skills.curator import SkillCurator
 from kun.tools.decorators import ToolRegistry, ToolUseContext
 
 logger = logging.getLogger(__name__)
@@ -82,11 +86,28 @@ class AgentLoop:
             session_id=self.state.session_id,
         )
         self.memory = MemoryManager(memory_dir=config.memory_dir)
+        # v0.3.1: Skill 使用量追踪 + 生命周期管理
+        self.skill_usage = SkillUsageStore(skill_dir=config.skill_dir)
+        self.skills = SkillLoader(skill_dir=config.skill_dir, usage_store=self.skill_usage)
+        self.curator = SkillCurator(skill_dir=config.skill_dir)
         self.router = CostRouter(config)
+        # v0.3.1: 自动反思引擎
+        self.reviewer = BackgroundReviewer(
+            memory_manager=self.memory,
+            skill_loader=self.skills,
+            llm_client=self.llm,
+            skill_usage=self.skill_usage,
+            light_model=config.light_model,
+        )
         self.retry_policy = RetryPolicy()
 
         self._abort = None  # Lazy init in run()
         self._last_retry_count = 0
+
+        # v0.3.1: Frozen Snapshot — 会话启动时生成一次，后续轮次复用
+        self._frozen_prompt: str | None = None
+        self._frozen_memory: str = ""
+        self._frozen_skills: str = ""
 
     def _init_tools(self) -> ToolRegistry:
         """初始化工具注册中心."""
@@ -130,9 +151,34 @@ class AgentLoop:
         user_msg = Message(role=MessageRole.USER, content=prompt)
         self.state.add_message(user_msg)
 
-        # ─── v0.2: 记忆加载 ───
-        relevant_memories = self.memory.select(prompt)
-        memory_context = self.memory.format_for_system_prompt(relevant_memories)
+        # ─── v0.3.1: Frozen Snapshot ───
+        # 会话首次调用时：加载全部记忆 + Skill 全文 → 冻结
+        # 后续调用：复用冻结快照（Mid-session 写入只落盘，下次会话生效）
+        if self._frozen_prompt is None:
+            self.memory.load()
+            all_memories = self.memory.memories
+            # Frozen snapshot: inject FULL memory text + skill text
+            memory_parts = []
+            for m in all_memories:
+                memory_parts.append(f"### {m.name}\n_{m.description}_\n\n{m.content[:2000]}")
+            self._frozen_memory = "\n\n".join(memory_parts)
+
+            self.skills.load()
+            all_skills = self.skills.skills
+            skill_parts = []
+            for s in all_skills:
+                skill_parts.append(f"### Skill: {s.name}\n_{s.description}_\n\n{s.content[:3000]}")
+            self._frozen_skills = "\n\n".join(skill_parts)
+
+            # Build frozen base prompt once
+            self._frozen_prompt = self.context_mgr.build_system_prompt()
+            if self._frozen_memory:
+                self._frozen_prompt += f"\n## 项目记忆\n\n{self._frozen_memory}"
+            if self._frozen_skills:
+                self._frozen_prompt += f"\n## 项目 Skill\n\n{self._frozen_skills}"
+
+        memory_context = ""  # already in frozen prompt
+        skill_context = ""   # already in frozen prompt
 
         # ─── v0.2: 成本路由 ───
         routed_model = self.router.route(prompt)
@@ -165,10 +211,8 @@ class AgentLoop:
 
             # --- Pre-LLM: 上下文裁剪 ---
             trimmed_messages = self.context_mgr.trim(self.state.messages)
-            system_prompt = self.context_mgr.build_system_prompt()
-            # v0.2: 注入记忆上下文
-            if memory_context:
-                system_prompt += memory_context
+            # v0.3.1: 使用 Frozen Snapshot (首次构建, 后续复用)
+            system_prompt = self._frozen_prompt or self.context_mgr.build_system_prompt()
             tool_schemas = self.tools.schemas()
 
             # --- LLM Stream (with retry) ---
@@ -239,6 +283,8 @@ class AgentLoop:
             # --- 判断下一步动作 ---
             if stop_reason == "end_turn":
                 final_result = full_text
+                # v0.3.1: 自动反思 — 从对话中提取记忆 + 评估 Skill 更新
+                self.reviewer.schedule_review(prompt, full_text)
                 break
 
             elif stop_reason == "tool_use":
@@ -316,11 +362,7 @@ class AgentLoop:
                             is_error=tool_msg.is_error,
                         )
 
-                    # v0.2: 如果工具是 remember/recall，重新加载记忆
-                    if tu["name"] in ("remember", "recall"):
-                        self.memory.reload()
-                        relevant = self.memory.select(prompt)
-                        memory_context = self.memory.format_for_system_prompt(relevant)
+                    # v0.3.1: Frozen Snapshot — 写入只落盘，不更新 System Prompt
 
                 # 工具执行完，继续循环 (把结果送回 LLM)
                 continue
@@ -373,6 +415,9 @@ class AgentLoop:
             session_id=self.state.session_id,
         )
 
+        # v0.3.1: 等待后台反思完成
+        await self.reviewer.wait_pending()
+
         # v0.2: 刷新执行日志
         log_path = self.execution_log.flush()
 
@@ -399,8 +444,9 @@ class AgentLoop:
             workspace=self.config.workspace,
             session_id=self.state.session_id,
         )
-        # v0.2: 传递 memory_dir 给 remember/recall 工具
+        # v0.2: 传递 memory_dir / skill_dir 给 remember/recall 工具
         ctx.metadata["memory_dir"] = self.config.memory_dir
+        ctx.metadata["skill_dir"] = self.config.skill_dir
         return ctx
 
     def _error_tool_result(self, tool_use_id: str, message: str) -> Message:

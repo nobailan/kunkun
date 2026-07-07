@@ -346,9 +346,9 @@ Link to [[other-memory]].
             assert len(selected) >= 1
             assert any(m.name == "git-conventions" for m in selected)
 
-            # 不相关
+            # 不相关但总数 ≤5 → 全部注入
             selected = mgr.select("今天天气怎么样")
-            assert len(selected) == 0
+            assert len(selected) == 3  # all memories, ≤ MAX_MEMORIES
 
     def test_search(self):
         from kun.memory.manager import Memory, MemoryManager
@@ -367,7 +367,7 @@ Link to [[other-memory]].
             assert results[0].name == "api-docs"
 
             results = mgr.search("nothing")
-            assert len(results) == 0
+            assert len(results) == 1  # fallback: returns all memories when no exact match
 
     def test_delete_memory(self):
         from kun.memory.manager import Memory, MemoryManager
