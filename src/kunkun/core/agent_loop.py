@@ -29,13 +29,13 @@ import logging
 from datetime import datetime
 from typing import AsyncGenerator
 
-from kun.core.context import ContextManager
-from kun.core.error_recovery import async_retry, ErrorClassifier, RetryPolicy
-from kun.core.events import Event, EventType, EventBus
-from kun.core.execution_log import ExecutionLogger
-from kun.core.llm_client import LLMClient
-from kun.core.permission import PermissionChecker, PermissionResult
-from kun.core.state import (
+from kunkun.core.context import ContextManager
+from kunkun.core.error_recovery import async_retry, ErrorClassifier, RetryPolicy
+from kunkun.core.events import Event, EventType, EventBus
+from kunkun.core.execution_log import ExecutionLogger
+from kunkun.core.llm_client import LLMClient
+from kunkun.core.permission import PermissionChecker, PermissionResult
+from kunkun.core.state import (
     AgentState,
     AgentStatus,
     HarnessConfig,
@@ -45,13 +45,13 @@ from kun.core.state import (
     ContentType,
     ToolResult,
 )
-from kun.memory.manager import MemoryManager
-from kun.routing.cost_router import CostRouter
-from kun.core.background_review import BackgroundReviewer
-from kun.skills.loader import SkillLoader
-from kun.skills.usage import SkillUsageStore
-from kun.skills.curator import SkillCurator
-from kun.tools.decorators import ToolRegistry, ToolUseContext
+from kunkun.memory.manager import MemoryManager
+from kunkun.routing.cost_router import CostRouter
+from kunkun.core.background_review import BackgroundReviewer
+from kunkun.skills.loader import SkillLoader
+from kunkun.skills.usage import SkillUsageStore
+from kunkun.skills.curator import SkillCurator
+from kunkun.tools.decorators import ToolRegistry, ToolUseContext
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ class AgentLoop:
 
     def _init_tools(self) -> ToolRegistry:
         """初始化工具注册中心."""
-        from kun.tools import init_tools
+        from kunkun.tools import init_tools
 
         return init_tools()
 
@@ -447,6 +447,10 @@ class AgentLoop:
         # v0.2: 传递 memory_dir / skill_dir 给 remember/recall 工具
         ctx.metadata["memory_dir"] = self.config.memory_dir
         ctx.metadata["skill_dir"] = self.config.skill_dir
+        # v0.4.1: 传递 API 凭据给 web 工具
+        ctx.metadata["api_key"] = self.config.api_key
+        ctx.metadata["base_url"] = self.config.base_url
+        ctx.metadata["light_model"] = self.config.light_model
         return ctx
 
     def _error_tool_result(self, tool_use_id: str, message: str) -> Message:

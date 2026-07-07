@@ -1,6 +1,6 @@
 [project]
-name = "kun"
-version = "0.3.2"
+name = "kunkun"
+version = "0.4.1"
 description = "Kun (鲲) — DeepSeek 原生编码 Agent。小而能化大，终成鹏。"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -14,8 +14,8 @@ dependencies = [
 ]
 
 [project.scripts]
-kun = "kun.main:_entry_main"
-kun-interactive = "kun.main:_entry_interactive"
+kunkun = "kunkun.main:_entry_main"
+kunkun-interactive = "kunkun.main:_entry_interactive"
 
 [build-system]
 requires = ["setuptools>=75.0"]

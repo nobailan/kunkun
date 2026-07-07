@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from kun.core.events import Event, EventType
+from kunkun.core.events import Event, EventType
 
 logger = logging.getLogger(__name__)
 

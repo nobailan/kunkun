@@ -1,4 +1,4 @@
-"""Kun 入口点.
+"""Kunkun 入口点.
 
 借鉴:
 - cc-haha src/entrypoints/cli.tsx — CLI 解析 + 模式分发
@@ -18,9 +18,9 @@ import logging
 import sys
 from pathlib import Path
 
-from kun.core.agent_loop import AgentLoop
-from kun.core.state import HarnessConfig
-from kun.cli.tui import ConsoleRenderer, HeadlessRenderer
+from kunkun.core.agent_loop import AgentLoop
+from kunkun.core.state import HarnessConfig
+from kunkun.cli.tui import ConsoleRenderer, HeadlessRenderer
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ async def run_interactive(config: HarnessConfig) -> int:
     skill_count = len(agent.skills.load())
 
     print("=" * 60)
-    print("  Kun v0.3.2 — DeepSeek 专属编码 Agent")
+    print("  Kunkun v0.4.1 — DeepSeek 专属编码 Agent")
     print(f"  模型: {config.model} | 轻模型: {config.light_model}")
     print(f"  工作目录: {Path(config.workspace).resolve()}")
     print(f"  工具: {', '.join(agent.tools.list_names())}")
@@ -152,8 +152,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     借鉴 cc-haha main.tsx Commander.js 全功能 CLI.
     """
     parser = argparse.ArgumentParser(
-        prog="kun",
-        description="Kun (鲲) — DeepSeek 原生编码 Agent",
+        prog="kunkun",
+        description="Kunkun — DeepSeek 原生编码 Agent",
     )
 
     parser.add_argument(
@@ -191,7 +191,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--version",
         action="version",
-        version="kun 0.3.2",
+        version="kunkun 0.4.1",
     )
 
     return parser.parse_args(argv)

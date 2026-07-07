@@ -23,15 +23,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 class TestBackgroundReviewer:
 
     def _make_mock_llm(self):
-        from kun.core.state import HarnessConfig
+        from kunkun.core.state import HarnessConfig
         llm = MagicMock()
         llm.config = HarnessConfig(api_key="test-key")
         return llm
 
     def _make_reviewer(self, memory_dir: str, skill_dir: str):
-        from kun.core.background_review import BackgroundReviewer
-        from kun.memory.manager import MemoryManager
-        from kun.skills.loader import SkillLoader
+        from kunkun.core.background_review import BackgroundReviewer
+        from kunkun.memory.manager import MemoryManager
+        from kunkun.skills.loader import SkillLoader
 
         llm = self._make_mock_llm()
         memory = MemoryManager(memory_dir=memory_dir)
@@ -200,8 +200,8 @@ class TestIntegration:
 
     def test_agent_loop_has_reviewer(self):
         """验证 AgentLoop 包含 BackgroundReviewer."""
-        from kun.core.state import HarnessConfig
-        from kun.core.agent_loop import AgentLoop
+        from kunkun.core.state import HarnessConfig
+        from kunkun.core.agent_loop import AgentLoop
 
         config = HarnessConfig()
         agent = AgentLoop(config)
@@ -213,8 +213,8 @@ class TestIntegration:
 
     def test_reviewer_uses_light_model(self):
         """验证 BackgroundReviewer 使用轻模型."""
-        from kun.core.state import HarnessConfig
-        from kun.core.agent_loop import AgentLoop
+        from kunkun.core.state import HarnessConfig
+        from kunkun.core.agent_loop import AgentLoop
 
         config = HarnessConfig()
         agent = AgentLoop(config)
@@ -224,8 +224,8 @@ class TestIntegration:
 
     def test_memory_and_skill_shared_with_reviewer(self):
         """验证 BackgroundReviewer 共享 MemoryManager 和 SkillLoader."""
-        from kun.core.state import HarnessConfig
-        from kun.core.agent_loop import AgentLoop
+        from kunkun.core.state import HarnessConfig
+        from kunkun.core.agent_loop import AgentLoop
 
         config = HarnessConfig()
         agent = AgentLoop(config)

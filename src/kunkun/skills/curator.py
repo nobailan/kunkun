@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from kun.skills.usage import (
+from kunkun.skills.usage import (
     SkillUsageStore,
     STATE_ACTIVE,
     STATE_STALE,

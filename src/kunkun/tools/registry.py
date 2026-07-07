@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from kun.tools.decorators import ToolRegistry
+from kunkun.tools.decorators import ToolRegistry
 
 # Global singleton (inspired by cc-haha getTools() pattern)
 _registry: Optional[ToolRegistry] = None

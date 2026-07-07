@@ -11,8 +11,8 @@ v0.3.1 新增:
 - SkillCurator: 自动生命周期管理 (active → stale → archived)
 """
 
-from kun.skills.loader import Skill, SkillLoader
-from kun.skills.usage import SkillUsageStore
-from kun.skills.curator import SkillCurator
+from kunkun.skills.loader import Skill, SkillLoader
+from kunkun.skills.usage import SkillUsageStore
+from kunkun.skills.curator import SkillCurator
 
 __all__ = ["Skill", "SkillLoader", "SkillUsageStore", "SkillCurator"]

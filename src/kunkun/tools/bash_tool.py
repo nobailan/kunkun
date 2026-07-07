@@ -20,8 +20,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from kun.core.state import ToolResult, ContentBlock, ContentType
-from kun.tools.decorators import tool, ToolUseContext
+from kunkun.core.state import ToolResult, ContentBlock, ContentType
+from kunkun.tools.decorators import tool, ToolUseContext
 
 logger = logging.getLogger(__name__)
 

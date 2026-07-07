@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 class TestSkillParsing:
 
     def test_parse_valid_skill(self):
-        from kun.skills.loader import Skill
+        from kunkun.skills.loader import Skill
 
         text = """---
 name: test-skill
@@ -48,7 +48,7 @@ This is the skill body.
             assert "Test Skill Content" in skill.content
 
     def test_parse_skill_without_triggers(self):
-        from kun.skills.loader import Skill
+        from kunkun.skills.loader import Skill
 
         text = """---
 name: no-trigger-skill
@@ -67,7 +67,7 @@ Content here.
             assert skill.triggers == []
 
     def test_parse_invalid_skill_no_frontmatter(self):
-        from kun.skills.loader import Skill
+        from kunkun.skills.loader import Skill
 
         text = "Just content without frontmatter"
         with tempfile.TemporaryDirectory() as tmp:
@@ -78,7 +78,7 @@ Content here.
             assert skill is None
 
     def test_parse_missing_file(self):
-        from kun.skills.loader import Skill
+        from kunkun.skills.loader import Skill
 
         skill = Skill.from_md(Path("/nonexistent/SKILL.md"))
         assert skill is None
@@ -108,7 +108,7 @@ Content for {name}.
         return path
 
     def test_load_from_directory(self):
-        from kun.skills.loader import SkillLoader
+        from kunkun.skills.loader import SkillLoader
 
         with tempfile.TemporaryDirectory() as tmp:
             self._create_skill(tmp, "skill-a", ["python", "code"])
@@ -123,7 +123,7 @@ Content for {name}.
             assert names == {"skill-a", "skill-b", "skill-c"}
 
     def test_load_empty_directory(self):
-        from kun.skills.loader import SkillLoader
+        from kunkun.skills.loader import SkillLoader
 
         with tempfile.TemporaryDirectory() as tmp:
             loader = SkillLoader(skill_dir=tmp)
@@ -131,14 +131,14 @@ Content for {name}.
             assert skills == []
 
     def test_load_nonexistent_directory(self):
-        from kun.skills.loader import SkillLoader
+        from kunkun.skills.loader import SkillLoader
 
         loader = SkillLoader(skill_dir="/nonexistent/path")
         skills = loader.load()
         assert skills == []
 
     def test_count(self):
-        from kun.skills.loader import SkillLoader
+        from kunkun.skills.loader import SkillLoader
 
         with tempfile.TemporaryDirectory() as tmp:
             self._create_skill(tmp, "s1", ["a"])
@@ -149,7 +149,7 @@ Content for {name}.
             assert loader.count == 2
 
     def test_list_names(self):
-        from kun.skills.loader import SkillLoader
+        from kunkun.skills.loader import SkillLoader
 
         with tempfile.TemporaryDirectory() as tmp:
             self._create_skill(tmp, "alpha", ["x"])
@@ -184,7 +184,7 @@ Content for {name}.
         return path
 
     def test_match_single_trigger(self):
-        from kun.skills.loader import SkillLoader
+        from kunkun.skills.loader import SkillLoader
 
         with tempfile.TemporaryDirectory() as tmp:
             self._create_skill(tmp, "code-review", ["代码审查", "review", "检查代码"])
@@ -197,7 +197,7 @@ Content for {name}.
             assert matched[0].name == "code-review"
 
     def test_match_multiple_triggers(self):
-        from kun.skills.loader import SkillLoader
+        from kunkun.skills.loader import SkillLoader
 
         with tempfile.TemporaryDirectory() as tmp:
             self._create_skill(tmp, "python", ["Python", "python"])
@@ -210,7 +210,7 @@ Content for {name}.
             assert len(matched) == 2
 
     def test_match_case_insensitive(self):
-        from kun.skills.loader import SkillLoader
+        from kunkun.skills.loader import SkillLoader
 
         with tempfile.TemporaryDirectory() as tmp:
             self._create_skill(tmp, "git", ["git", "commit"])
@@ -223,7 +223,7 @@ Content for {name}.
             assert matched[0].name == "git"
 
     def test_match_score_ordering(self):
-        from kun.skills.loader import SkillLoader
+        from kunkun.skills.loader import SkillLoader
 
         with tempfile.TemporaryDirectory() as tmp:
             self._create_skill(tmp, "best-match", ["python", "review", "代码"])
@@ -238,7 +238,7 @@ Content for {name}.
             assert matched[0].name == "best-match"
 
     def test_no_match(self):
-        from kun.skills.loader import SkillLoader
+        from kunkun.skills.loader import SkillLoader
 
         with tempfile.TemporaryDirectory() as tmp:
             self._create_skill(tmp, "git", ["git", "commit"])
@@ -250,7 +250,7 @@ Content for {name}.
             assert matched == []
 
     def test_max_skills_limit(self):
-        from kun.skills.loader import SkillLoader
+        from kunkun.skills.loader import SkillLoader
 
         with tempfile.TemporaryDirectory() as tmp:
             for i in range(5):
@@ -289,7 +289,7 @@ This is the skill body for {name}.
         return path
 
     def test_inject_appends_to_prompt(self):
-        from kun.skills.loader import SkillLoader
+        from kunkun.skills.loader import SkillLoader
 
         with tempfile.TemporaryDirectory() as tmp:
             self._create_skill(tmp, "tester", ["test"])
@@ -306,7 +306,7 @@ This is the skill body for {name}.
             assert "tester Content" not in result  # full content NOT injected
 
     def test_inject_no_match_returns_unchanged(self):
-        from kun.skills.loader import SkillLoader
+        from kunkun.skills.loader import SkillLoader
 
         with tempfile.TemporaryDirectory() as tmp:
             self._create_skill(tmp, "git", ["git"])
@@ -329,7 +329,7 @@ class TestIntegration:
 
     def test_prebuilt_skills_exist(self):
         """验证预置的 3 个 SKILL.md 文件存在且可解析."""
-        from kun.skills.loader import SkillLoader
+        from kunkun.skills.loader import SkillLoader
 
         # 使用项目实际路径
         project_root = Path(__file__).parent.parent
@@ -351,8 +351,8 @@ class TestIntegration:
 
     def test_agent_loop_has_skill_loader(self):
         """验证 AgentLoop 初始化包含 SkillLoader."""
-        from kun.core.state import HarnessConfig
-        from kun.core.agent_loop import AgentLoop
+        from kunkun.core.state import HarnessConfig
+        from kunkun.core.agent_loop import AgentLoop
 
         config = HarnessConfig()
         agent = AgentLoop(config)
@@ -364,8 +364,8 @@ class TestIntegration:
 
     def test_memory_and_skill_independent(self):
         """验证 Memory 和 Skill 是两个独立系统."""
-        from kun.core.state import HarnessConfig
-        from kun.core.agent_loop import AgentLoop
+        from kunkun.core.state import HarnessConfig
+        from kunkun.core.agent_loop import AgentLoop
 
         config = HarnessConfig()
         agent = AgentLoop(config)

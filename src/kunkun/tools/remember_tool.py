@@ -12,9 +12,9 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from kun.core.state import ToolResult
-from kun.memory.manager import Memory, MemoryManager
-from kun.tools.decorators import tool, ToolUseContext
+from kunkun.core.state import ToolResult
+from kunkun.memory.manager import Memory, MemoryManager
+from kunkun.tools.decorators import tool, ToolUseContext
 
 logger = logging.getLogger(__name__)
 
@@ -375,7 +375,7 @@ class SkillLoadInput(BaseModel):
 )
 async def skill_load_tool(args: SkillLoadInput, ctx: ToolUseContext) -> ToolResult:
     """加载 Skill 全文."""
-    from kun.skills.loader import SkillLoader
+    from kunkun.skills.loader import SkillLoader
 
     skill_dir = ctx.metadata.get("skill_dir", "skills")
     loader = SkillLoader(skill_dir=skill_dir)

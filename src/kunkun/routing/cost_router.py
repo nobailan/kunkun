@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from kun.core.state import HarnessConfig
+from kunkun.core.state import HarnessConfig
 
 logger = logging.getLogger(__name__)
 

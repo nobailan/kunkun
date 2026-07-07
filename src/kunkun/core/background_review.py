@@ -199,6 +199,14 @@ Return JSON only:
         api_key = self.llm.config.api_key
         base_url = self.llm.config.base_url
 
+        import os
+        proxy = None
+        for var in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+            val = os.environ.get(var, "")
+            if val:
+                proxy = val
+                break
+
         if not api_key:
             raise RuntimeError("No API key configured")
 
@@ -209,7 +217,7 @@ Return JSON only:
             "temperature": 0.3,
         }
 
-        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(60.0), proxy=proxy) as client:
             response = await client.post(
                 f"{base_url}/v1/chat/completions",
                 json=payload,
@@ -249,7 +257,7 @@ Return JSON only:
             if not mem.get("name") or not mem.get("content"):
                 continue
             try:
-                from kun.memory.manager import Memory
+                from kunkun.memory.manager import Memory
                 memory = Memory(
                     name=mem["name"],
                     description=mem.get("description", ""),

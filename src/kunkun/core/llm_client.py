@@ -21,9 +21,9 @@ from typing import Any, AsyncGenerator
 
 import httpx
 
-from kun.core.error_recovery import ErrorClassifier, RetryPolicy
-from kun.core.events import Event, EventType
-from kun.core.state import HarnessConfig, Message, MessageRole, ContentBlock, ContentType
+from kunkun.core.error_recovery import ErrorClassifier, RetryPolicy
+from kunkun.core.events import Event, EventType
+from kunkun.core.state import HarnessConfig, Message, MessageRole, ContentBlock, ContentType
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,14 @@ class LLMClient:
 
     def __init__(self, config: HarnessConfig):
         self.config = config
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(120.0))
+        import os
+        proxy = None
+        for var in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+            val = os.environ.get(var, "")
+            if val:
+                proxy = val
+                break
+        self._client = httpx.AsyncClient(timeout=httpx.Timeout(120.0), proxy=proxy)
         self.retry_policy = RetryPolicy(
             base_delay=1.0,
             max_delay=60.0,

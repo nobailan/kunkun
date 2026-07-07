@@ -20,8 +20,8 @@ import logging
 from datetime import datetime
 from typing import AsyncGenerator
 
-from kun.core.events import Event, EventType
-from kun.core.state import AgentStatus
+from kunkun.core.events import Event, EventType
+from kunkun.core.state import AgentStatus
 
 logger = logging.getLogger(__name__)
 

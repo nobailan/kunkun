@@ -24,7 +24,7 @@ from typing import Any, Callable, Awaitable
 
 from pydantic import BaseModel
 
-from kun.core.state import ToolResult
+from kunkun.core.state import ToolResult
 
 logger = logging.getLogger(__name__)
 

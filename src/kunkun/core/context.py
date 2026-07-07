@@ -25,14 +25,14 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from kun.core.state import HarnessConfig, Message, MessageRole, ContentType
+from kunkun.core.state import HarnessConfig, Message, MessageRole, ContentType
 
 logger = logging.getLogger(__name__)
 
 # ─── System Prompt ──────────────────────────────────────
 
 # 中文 System Prompt (DSv4 优化版)
-DS_SYSTEM_PROMPT = """你是 Kun，一个基于 DeepSeek v4 模型的 AI 编码 Agent。
+KUN_SYSTEM_PROMPT = """你是 Kun，一个基于 DeepSeek v4 模型的 AI 编码 Agent。
 
 ## 你的能力
 - 读写文件系统 (read_file, write_file)
@@ -274,7 +274,7 @@ class ContextManager:
         - context files (CLAUDE.md / .kun/config.yaml)
         - memory context (v0.5+)
         """
-        parts: list[str] = [DS_SYSTEM_PROMPT]
+        parts: list[str] = [KUN_SYSTEM_PROMPT]
 
         # 尝试加载项目级上下文文件
         context_files = self._load_context_files()
