@@ -66,19 +66,29 @@ cp .env.example .env
 | v0.1 MVP | ✅ | Agent Loop + 4 工具 + CLI |
 | v0.2 基础设施 | ✅ | 错误恢复 + 权限 + 记忆 + 成本路由 |
 | v0.3 Skill 系统 | ✅ | Memory + Skill 自改进闭环，对齐 Hermes |
-| v0.4 界面 | 计划中 | TUI 美化 + GUI 桌面应用 |
+| v0.4 工具系统 | ✅ | 工具补全 (16 工具): Grep/Edit/Web/Agent/代码智能 |
+| v0.5 DS 创新 | 计划中 | ThinkBlock 过程评测 + Prompt 粒度编译器 |
 
-## 工具 (7 个)
+## 工具 (16 个)
 
 | 工具 | 权限 | 说明 |
 |------|------|------|
-| `bash` | write | 执行 Shell 命令 (危险命令自动拦截) |
-| `read_file` | read | 读取文件 (行号标注) |
+| `bash` | write | Shell 命令 (危险命令拦截) |
+| `read_file` | read | 文件读取 (行号标注) |
 | `write_file` | write | 写入/创建文件 |
-| `glob` | read | 文件模式匹配搜索 |
-| `remember` | write | 记忆/Skill 管理（单条/批量，自动区分事实与约定） |
-| `recall` | read | 搜索已保存的记忆 |
+| `glob` | read | 文件模式搜索 |
+| `grep` | read | 文件内容正则搜索 |
+| `edit` | write | 精确字符串替换 |
+| `remember` | write | 记忆/Skill 管理 (批量 operations) |
+| `recall` | read | 搜索已保存记忆 |
 | `skill_load` | read | 加载 Skill 全文 |
+| `websearch` | read | 网页搜索 (Tavily/DuckDuckGo) |
+| `webfetch` | read | 网页抓取 (LLM 提取) |
+| `agent` | write | 子 Agent 并行 |
+| `todowrite` | write | 任务清单管理 |
+| `findsymbol` | read | 代码符号搜索 |
+| `gotodef` | read | 跳转定义 |
+| `findrefs` | read | 查找引用 |
 
 ## Memory + Skill 系统
 

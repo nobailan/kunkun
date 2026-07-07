@@ -18,6 +18,7 @@ from kunkun.tools.grep_tool import grep_tool
 from kunkun.tools.edit_tool import edit_tool
 from kunkun.tools.web_tools import websearch_tool, webfetch_tool
 from kunkun.tools.agent_tool import agent_tool, todowrite_tool
+from kunkun.tools.code_intel_tool import findsymbol_tool, gotodef_tool, findrefs_tool
 
 
 def init_tools() -> ToolRegistry:
@@ -48,5 +49,10 @@ def init_tools() -> ToolRegistry:
     # v0.4.2 Agent 编排
     registry.register(agent_tool._tool_instance)
     registry.register(todowrite_tool._tool_instance)
+
+    # v0.4.3 代码智能
+    registry.register(findsymbol_tool._tool_instance)
+    registry.register(gotodef_tool._tool_instance)
+    registry.register(findrefs_tool._tool_instance)
 
     return registry

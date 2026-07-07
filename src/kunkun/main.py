@@ -109,7 +109,7 @@ async def run_interactive(config: HarnessConfig) -> int:
     skill_count = len(agent.skills.load())
 
     print("=" * 60)
-    print("  Kunkun v0.4.2 — DeepSeek 专属编码 Agent")
+    print("  Kunkun v0.4.3 — DeepSeek 专属编码 Agent")
     print(f"  模型: {config.model} | 轻模型: {config.light_model}")
     print(f"  工作目录: {Path(config.workspace).resolve()}")
     print(f"  工具: {', '.join(agent.tools.list_names())}")
@@ -191,7 +191,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--version",
         action="version",
-        version="kunkun 0.4.2",
+        version="kunkun 0.4.3",
     )
 
     return parser.parse_args(argv)
