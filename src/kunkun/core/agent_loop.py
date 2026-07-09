@@ -51,6 +51,10 @@ from kunkun.core.background_review import BackgroundReviewer
 from kunkun.skills.loader import SkillLoader
 from kunkun.skills.usage import SkillUsageStore
 from kunkun.skills.curator import SkillCurator
+from kunkun.core.thinking_control import (
+    OverthinkingDetector,
+    ROLLBACK_INSTRUCTION,
+)
 from kunkun.core.thinking_eval import ThinkingEvaluator
 from kunkun.core.task_eval import TaskEvaluator
 from kunkun.core.prompt_compiler import PromptCompiler, detect_profile
@@ -124,6 +128,9 @@ class AgentLoop:
             base_url=config.base_url,
             light_model=config.light_model,
         )
+
+        # v0.7: 被动过度思考检测 (仅记录, 不干预)
+        self.overthinking_detector = OverthinkingDetector()
 
         # v0.3.1: Frozen Snapshot — 会话启动时生成一次，后续轮次复用
         self._frozen_prompt: str | None = None
@@ -243,6 +250,15 @@ class AgentLoop:
             self.state.status = AgentStatus.THINKING
             yield Event.status("thinking")
 
+            # v0.7: 过度思考检测 (每个 AgentLoop 独立计数)
+            self.overthinking_detector.on_new_turn()
+            needs_intervention, reason = self.overthinking_detector.needs_intervention()
+            if needs_intervention:
+                logger.warning("Overthinking intervention: %s", reason)
+                self.state.add_message(
+                    Message(role=MessageRole.SYSTEM, content=ROLLBACK_INSTRUCTION)
+                )
+
             # --- Pre-LLM: 上下文裁剪 ---
             trimmed_messages = self.context_mgr.trim(self.state.messages)
             # v0.3.1: 使用 Frozen Snapshot (首次构建, 后续复用)
@@ -292,10 +308,20 @@ class AgentLoop:
                         ct = event.data.get("type", "")
                         if ct == "text":
                             yield event
-                        elif ct == "thinking" and self.config.think_visibility == "show":
-                            yield event
+                        elif ct == "thinking":
+                            # v0.7: 被动过度思考检测 (仅记录)
+                            thinking_text = event.data.get("text", "")
+                            self.overthinking_detector.feed_thinking(thinking_text)
+                            if self.config.think_visibility == "show":
+                                yield event
 
-                    elif event.type in (EventType.TOOL_USE, EventType.RETRY, EventType.WARNING, EventType.STATUS_CHANGE):
+                    elif event.type == EventType.TOOL_USE:
+                        self.overthinking_detector.feed_tool_call(
+                            event.data.get("name", ""),
+                            event.data.get("input", {}),
+                        )
+                        yield event
+                    elif event.type in (EventType.RETRY, EventType.WARNING, EventType.STATUS_CHANGE):
                         yield event
 
                     elif event.type == EventType.ERROR:

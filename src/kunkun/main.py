@@ -27,13 +27,30 @@ logger = logging.getLogger(__name__)
 
 
 def setup_logging(verbose: bool = False):
-    """配置日志."""
-    level = logging.DEBUG if verbose else logging.WARNING
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    """配置日志 — 日志写文件, 终端只显示 ERROR."""
+    from pathlib import Path
+    log_dir = Path(".kun/logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    # 根 logger: DEBUG 级别 (文件)
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG if verbose else logging.INFO)
+
+    # 文件 handler: 所有级别 → .kun/logs/kunkun.log
+    fh = logging.FileHandler(log_dir / "kunkun.log", encoding="utf-8")
+    fh.setLevel(logging.DEBUG if verbose else logging.INFO)
+    fh.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%H:%M:%S",
-    )
+    ))
+    root.addHandler(fh)
+
+    # 终端 handler: 只显示 ERROR (不干扰用户输入)
+    import sys
+    sh = logging.StreamHandler(sys.stderr)
+    sh.setLevel(logging.ERROR)
+    sh.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+    root.addHandler(sh)
 
 
 async def run_once(prompt: str, config: HarnessConfig) -> int:
@@ -110,7 +127,7 @@ async def run_interactive(config: HarnessConfig) -> int:
     skill_count = len(agent.skills.load())
 
     print("=" * 60)
-    print("  Kunkun v0.7.0 — DeepSeek 专属编码 Agent")
+    print("  Kunkun v0.7.1 — DeepSeek 专属编码 Agent")
     print(f"  模型: {config.model} | 轻模型: {config.light_model}")
     print(f"  Prompt: {agent.prompt_compiler.profile.value} | 工作目录: {Path(config.workspace).resolve()}")
     print(f"  工具: {', '.join(agent.tools.list_names())}")
@@ -192,7 +209,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--version",
         action="version",
-        version="kunkun 0.7.0",
+        version="kunkun 0.7.1",
     )
 
     return parser.parse_args(argv)

@@ -118,6 +118,15 @@ class Event:
         )
 
     @classmethod
+    def warning(cls, message: str, **kwargs) -> "Event":
+        """创建警告事件."""
+        return cls(
+            type=EventType.WARNING,
+            data={"warning": message},
+            **kwargs,
+        )
+
+    @classmethod
     def status(cls, status: str, **kwargs) -> "Event":
         """创建状态变更事件."""
         return cls(

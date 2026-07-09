@@ -62,24 +62,25 @@ async def agent_tool(args: AgentInput, ctx: ToolUseContext) -> ToolResult:
     if args.subagent_type == "explore":
         sub_config.permission_mode = "bypass"  # 只读子 Agent 不需要权限确认
 
+    # v0.7.1: 使用线程隔离的 KunkunHarness 替代直接 AgentLoop
+    from kunkun.core.agent_runtime import KunkunHarness, TeamRole
+    sub = KunkunHarness("sub", TeamRole.CODER, sub_config)
+
     try:
-        sub_agent = AgentLoop(sub_config)
-
-        # 收集子 Agent 的输出
         output_parts: list[str] = []
-        async for event in sub_agent.run(args.prompt):
-            if event.type.value == "content_block_delta":
-                if event.data.get("type") == "text":
-                    output_parts.append(event.data["text"])
-            elif event.type.value == "error":
-                await sub_agent.close()
-                return ToolResult(
-                    data=f"❌ 子 Agent 错误: {event.data.get('error', 'Unknown')}",
-                    is_error=True,
-                )
+        async for chunk in sub.run(args.prompt):
+            if chunk.startswith("[ERROR:"):
+                await sub.close()
+                return ToolResult(data=f"❌ 子 Agent 错误: {chunk}", is_error=True)
+            output_parts.append(chunk)
 
-        await sub_agent.close()
+        await sub.close()
         result = "".join(output_parts).strip()
+
+        # 编排者重置检测器 (上下文读取不被当成重复)
+        parent_loop = ctx.metadata.get("_agent_loop")
+        if parent_loop and parent_loop.overthinking_detector:
+            parent_loop.overthinking_detector.reset()
 
         if not result:
             return ToolResult(
@@ -192,8 +193,9 @@ async def grpo_tool(args: GRPOInput, ctx: ToolUseContext) -> ToolResult:
 
     async def _run_path(name: str, strategy: str) -> dict:
         import traceback
+        from kunkun.core.agent_runtime import KunkunHarness, TeamRole
         try:
-            sub = AgentLoop(parent_config)
+            sub = KunkunHarness(f"grpo-{name}", TeamRole.CODER, parent_config)
             full_prompt = (
                 f"{strategy}\n\n"
                 f"任务: {args.prompt}\n\n"
@@ -201,12 +203,11 @@ async def grpo_tool(args: GRPOInput, ctx: ToolUseContext) -> ToolResult:
             )
             parts: list[str] = []
             errors: list[str] = []
-            async for event in sub.run(full_prompt):
-                if event.type.value == "content_block_delta":
-                    if event.data.get("type") == "text":
-                        parts.append(event.data["text"])
-                elif event.type.value == "error":
-                    errors.append(event.data.get("error", ""))
+            async for chunk in sub.run(full_prompt):
+                if chunk.startswith("[ERROR:"):
+                    errors.append(chunk)
+                else:
+                    parts.append(chunk)
             await sub.close()
             result = "".join(parts).strip()
             if result:
@@ -218,6 +219,10 @@ async def grpo_tool(args: GRPOInput, ctx: ToolUseContext) -> ToolResult:
     # 并行执行 3 条路径
     tasks = [_run_path(name, strat) for name, strat in strategies]
     results = await asyncio.gather(*tasks)
+    # 编排者重置检测器
+    parent_loop = ctx.metadata.get("_agent_loop")
+    if parent_loop and parent_loop.overthinking_detector:
+        parent_loop.overthinking_detector.reset()
 
     if not any(r["ok"] for r in results):
         details = "\n".join(f"  {r['path']}: {r['result'][:200]}" for r in results)
@@ -283,3 +288,164 @@ async def grpo_tool(args: GRPOInput, ctx: ToolUseContext) -> ToolResult:
              f"---\n\n## 优胜代码 ({winner})\n\n{best_result[:8000]}\n\n"
              f"📊 路径统计: {sum(1 for r in results if r['ok'])}/3 成功"
     )
+
+
+# ─── Fast/Slow 竞速 ─────────────────────────────────────
+
+
+class FastSlowInput(BaseModel):
+    """fastslow 工具输入参数."""
+
+    prompt: str = Field(description="要执行的任务描述")
+
+
+@tool(
+    name="fastslow",
+    description=(
+        "快慢双通道竞速: 同时启动快速通道(无thinkblock, 直接行动)和慢速通道(深度推理)。"
+        "快通道成功则立即杀慢通道, 节省 token。慢通道只有快通道失败时才被采用。"
+        "适合: 不确定任务是否需要深度思考时使用。"
+    ),
+    permission="write",
+    input_model=FastSlowInput,
+)
+async def fastslow_tool(args: FastSlowInput, ctx: ToolUseContext) -> ToolResult:
+    """快慢竞速."""
+    from kunkun.core.thinking_control import run_fast_slow_race
+
+    parent_config = ctx.metadata.get("_config")
+    if parent_config is None:
+        return ToolResult(data="❌ 需要父 Agent 配置", is_error=True)
+
+    # 快通道: 无 thinking, 直接行动
+    async def _fast_path() -> str:
+        from kunkun.core.agent_runtime import KunkunHarness, TeamRole
+        sub = KunkunHarness("fast", TeamRole.CODER, parent_config)
+        parts: list[str] = []
+        errors: list[str] = []
+        async for chunk in sub.run(f"直接执行, 不要思考, 立即行动:\n\n{args.prompt}"):
+            if chunk.startswith("[ERROR:"):
+                errors.append(chunk)
+            else:
+                parts.append(chunk)
+        await sub.close()
+        result = "".join(parts).strip()
+        if not result and errors:
+            raise RuntimeError("; ".join(errors[:3]))
+        return result
+
+    # 慢通道: 有 thinking, 深度推理
+    async def _slow_path() -> str:
+        from kunkun.core.agent_runtime import KunkunHarness, TeamRole
+        sub = KunkunHarness("slow", TeamRole.CODER, parent_config)
+        parts: list[str] = []
+        errors: list[str] = []
+        async for chunk in sub.run(f"先深入分析设计, 再逐步实现:\n\n{args.prompt}"):
+            if chunk.startswith("[ERROR:"):
+                errors.append(chunk)
+            else:
+                parts.append(chunk)
+        await sub.close()
+        result = "".join(parts).strip()
+        if not result and errors:
+            raise RuntimeError("; ".join(errors[:3]))
+        return result
+
+    # 并行执行两个通道, 等慢通道完成后再选优
+    import time
+    fast_result = ""
+    slow_result = ""
+    fast_time = 0.0
+    slow_time = 0.0
+
+    try:
+        t0 = time.monotonic()
+        fast_coro = _fast_path()
+        slow_coro = _slow_path()
+        gathered = await asyncio.gather(fast_coro, slow_coro, return_exceptions=True)
+        # 编排者重置检测器
+        parent_loop = ctx.metadata.get("_agent_loop")
+        if parent_loop and parent_loop.overthinking_detector:
+            parent_loop.overthinking_detector.reset()
+        fast_result = gathered[0] if not isinstance(gathered[0], BaseException) else str(gathered[0])
+        slow_result = gathered[1] if not isinstance(gathered[1], BaseException) else str(gathered[1])
+        slow_time = (time.monotonic() - t0) * 1000
+    except Exception as e:
+        return ToolResult(data=f"❌ Fast/Slow 失败: {e}", is_error=True)
+
+    # 选优: 优先用快通道, 快通道失败用慢通道
+    is_fast_ok = fast_result and "RuntimeError" not in fast_result
+    winner = "fast" if is_fast_ok else "slow"
+    winner_text = fast_result if is_fast_ok else slow_result
+
+    if not winner_text.strip():
+        return ToolResult(data="❌ 两个通道均失败", is_error=True)
+
+    return ToolResult(
+        data=(
+            f"⚡ Fast/Slow ({winner} 通道选用)\n"
+            f"   快通道: {'✅' if is_fast_ok else '❌'} ({len(fast_result)} chars)\n"
+            f"   慢通道: {'✅' if slow_result else '❌'} ({len(slow_result)} chars)\n\n"
+            f"{winner_text[:8000]}"
+        )
+    )
+
+
+# ─── AgentTeam 工具 ─────────────────────────────────────
+
+
+class TeamInput(BaseModel):
+    """team 工具输入参数."""
+
+    task: str = Field(description="要执行的复杂任务描述")
+    roles: Optional[list[str]] = Field(
+        default=None,
+        description="需要的角色列表 (默认全部: explorer, coder, reviewer, planner)",
+    )
+
+
+@tool(
+    name="team",
+    description=(
+        "启动 Agent Team 协作执行复杂任务。\n"
+        "流程: Planner 拆解任务 → Explorer 搜索 → Coder 实现 → Reviewer 审查 → Leader 汇总。\n"
+        "适合: 重构、跨模块修改、需要多种角色协作的任务。\n"
+        "注意: Team 会创建多个子 Agent 并行工作, token 消耗较大。"
+    ),
+    permission="write",
+    input_model=TeamInput,
+)
+async def team_tool(args: TeamInput, ctx: ToolUseContext) -> ToolResult:
+    """Agent Team 协作."""
+    from kunkun.core.agent_runtime import AgentTeam, KunkunHarness, TeamRole, TeamMessage
+
+    parent_config = ctx.metadata.get("_config")
+    if parent_config is None:
+        return ToolResult(data="❌ 需要父 Agent 配置", is_error=True)
+
+    # 创建 Team
+    team = AgentTeam(leader_config=parent_config)
+
+    # 注册角色
+    roles_to_add = args.roles or ["planner", "explorer", "reviewer"]
+    for role_name in roles_to_add:
+        try:
+            role = TeamRole(role_name)
+        except ValueError:
+            continue
+        harness = KunkunHarness(f"{role_name}-1", role, parent_config)
+        team.add_runtime(harness)
+
+    # 执行
+    parts: list[str] = []
+    try:
+        async for chunk in team.execute(args.task):
+            parts.append(chunk)
+    finally:
+        await team.close()
+    # 编排者重置检测器
+    parent_loop = ctx.metadata.get("_agent_loop")
+    if parent_loop and parent_loop.overthinking_detector:
+        parent_loop.overthinking_detector.reset()
+
+    return ToolResult(data="".join(parts))
