@@ -51,6 +51,8 @@ from kunkun.core.background_review import BackgroundReviewer
 from kunkun.skills.loader import SkillLoader
 from kunkun.skills.usage import SkillUsageStore
 from kunkun.skills.curator import SkillCurator
+from kunkun.core.thinking_eval import ThinkingEvaluator
+from kunkun.core.prompt_compiler import PromptCompiler, detect_profile
 from kunkun.tools.decorators import ToolRegistry, ToolUseContext
 
 logger = logging.getLogger(__name__)
@@ -104,6 +106,16 @@ class AgentLoop:
         self._abort = None  # Lazy init in run()
         self._last_retry_count = 0
 
+        # v0.5: ThinkBlock 过程评测
+        self.thinking_eval = ThinkingEvaluator(
+            api_key=config.api_key,
+            base_url=config.base_url,
+            light_model=config.light_model,
+        )
+
+        # v0.7: Prompt 粒度编译器
+        self.prompt_compiler = PromptCompiler(config.model)
+
         # v0.3.1: Frozen Snapshot — 会话启动时生成一次，后续轮次复用
         self._frozen_prompt: str | None = None
         self._frozen_memory: str = ""
@@ -140,12 +152,16 @@ class AgentLoop:
         if self._abort is None:
             self._abort = asyncio.Event()
 
-        yield Event(
+        ev1 = Event(
             EventType.SESSION_START,
             data={"prompt": prompt, "model": self.state.model},
             session_id=self.state.session_id,
         )
-        yield Event(EventType.TURN_START, data={"prompt": prompt})
+        yield ev1
+        self.thinking_eval.record(ev1)
+        ev2 = Event(EventType.TURN_START, data={"prompt": prompt})
+        yield ev2
+        self.thinking_eval.record(ev2)
 
         # Step 1: 添加用户消息到历史
         user_msg = Message(role=MessageRole.USER, content=prompt)
@@ -170,8 +186,10 @@ class AgentLoop:
                 skill_parts.append(f"### Skill: {s.name}\n_{s.description}_\n\n{s.content[:3000]}")
             self._frozen_skills = "\n\n".join(skill_parts)
 
-            # Build frozen base prompt once
-            self._frozen_prompt = self.context_mgr.build_system_prompt()
+            # Build frozen base prompt once (v0.7: adapted to model profile)
+            self._frozen_prompt = self.prompt_compiler.compile(
+                self.context_mgr.build_system_prompt()
+            )
             if self._frozen_memory:
                 self._frozen_prompt += f"\n## 项目记忆\n\n{self._frozen_memory}"
             if self._frozen_skills:
@@ -189,6 +207,12 @@ class AgentLoop:
             )
             self.config.model = routed_model
             self.state.model = routed_model
+            # v0.7: 模型变了 → 重新编译 prompt 粒度
+            self.prompt_compiler = PromptCompiler(routed_model)
+            if self._frozen_prompt:
+                self._frozen_prompt = self.prompt_compiler.compile(
+                    self.context_mgr.build_system_prompt()
+                )
 
         # Step 2: 进入 Agent Loop
         self.state.current_turn = 0
@@ -216,54 +240,69 @@ class AgentLoop:
             tool_schemas = self.tools.schemas()
 
             # --- LLM Stream (with retry) ---
-            all_text: list[str] = []
-            all_thinking: list[str] = []
-            tool_uses: list[dict] = []
-            stop_reason: str | None = None
-            final_usage: dict = {}
             self._last_retry_count = 0
+            from kunkun.core.event_dispatch import (
+                EventDispatchChain, EventContext,
+                make_text_handler, make_thinking_handler,
+                make_tool_use_handler, make_message_stop_handler,
+                make_error_handler, make_passthrough_handler,
+                StopReasonRouter, default_stop_reason_router,
+            )
+
+            ctx = EventContext()
+
+            async def _on_msg_start(e: Event, c: EventContext) -> bool:
+                self.state.status = AgentStatus.STREAMING
+                return True
+
+            chain = (
+                EventDispatchChain()
+                .on(EventType.MESSAGE_START, _on_msg_start)
+                .on_many([EventType.CONTENT_BLOCK_START, EventType.CONTENT_BLOCK_STOP, EventType.MESSAGE_DELTA],
+                         make_passthrough_handler())
+                .on(EventType.CONTENT_BLOCK_DELTA, make_text_handler())
+                .on(EventType.CONTENT_BLOCK_DELTA,
+                    make_thinking_handler(self.config.think_visibility == "show"))
+                .on(EventType.TOOL_USE, make_tool_use_handler())
+                .on(EventType.MESSAGE_STOP, make_message_stop_handler())
+                .on(EventType.ERROR, make_error_handler())
+            )
 
             try:
                 async for event in self._stream_with_retry(
                     trimmed_messages, tool_schemas, system_prompt
                 ):
                     self.event_bus.record(event)
-                    # v0.2: 记录事件到执行日志
                     self.execution_log.record(event)
+                    self.thinking_eval.record(event)
 
-                    if event.type == EventType.MESSAGE_START:
-                        self.state.status = AgentStatus.STREAMING
+                    handled = await chain.dispatch(event, ctx)
 
-                    elif event.type == EventType.CONTENT_BLOCK_DELTA:
-                        if event.data.get("type") == "text":
-                            all_text.append(event.data["text"])
+                    if event.type == EventType.CONTENT_BLOCK_DELTA:
+                        ct = event.data.get("type", "")
+                        if ct == "text":
                             yield event
-                        elif event.data.get("type") == "thinking":
-                            all_thinking.append(event.data["text"])
-                            if self.config.think_visibility == "show":
-                                yield event
+                        elif ct == "thinking" and self.config.think_visibility == "show":
+                            yield event
 
-                    elif event.type == EventType.TOOL_USE:
-                        # 收集工具调用 (OpenAI stream 中在 finish_reason 前产出)
-                        tool_uses.append(event.data)
+                    elif event.type in (EventType.TOOL_USE, EventType.RETRY, EventType.WARNING, EventType.STATUS_CHANGE):
                         yield event
-
-                    elif event.type == EventType.MESSAGE_STOP:
-                        stop_reason = event.data.get("stop_reason", "end_turn")
-                        final_usage = event.data.get("usage", {})
-                        break
-
-                    elif event.type in (
-                        EventType.CONTENT_BLOCK_START,
-                        EventType.CONTENT_BLOCK_STOP,
-                        EventType.MESSAGE_DELTA,
-                    ):
-                        pass
 
                     elif event.type == EventType.ERROR:
                         yield event
                         is_error = True
                         break
+
+                    elif event.type == EventType.MESSAGE_STOP:
+                        break
+
+                    if not handled:
+                        if event.type not in (
+                            EventType.MESSAGE_START, EventType.CONTENT_BLOCK_START,
+                            EventType.CONTENT_BLOCK_STOP, EventType.MESSAGE_DELTA,
+                            EventType.MESSAGE_STOP,
+                        ):
+                            yield event
 
             except Exception as e:
                 logger.exception("Agent loop error during LLM stream")
@@ -275,19 +314,25 @@ class AgentLoop:
                 break
 
             # 记录 token 使用
-            self.state.record_usage(final_usage)
-
-            # --- 处理 LLM 响应 ---
-            full_text = "".join(all_text)
+            self.state.record_usage(ctx.final_usage)
 
             # --- 判断下一步动作 ---
-            if stop_reason == "end_turn":
-                final_result = full_text
-                # v0.3.1: 自动反思 — 从对话中提取记忆 + 评估 Skill 更新
-                self.reviewer.schedule_review(prompt, full_text)
+            full_text = "".join(ctx.all_text)
+            router = default_stop_reason_router()
+            sr_result = router.route(ctx, len(ctx.tool_uses) > 0)
+
+            if sr_result.action == "break":
+                final_result = sr_result.final_result or full_text
+                self.reviewer.schedule_review(prompt, final_result)
                 break
 
-            elif stop_reason == "tool_use":
+            elif sr_result.action == "break_warn":
+                yield Event.warning(sr_result.message)
+                final_result = sr_result.final_result or full_text
+                break
+
+            elif sr_result.action == "continue":
+                tool_uses = ctx.tool_uses
                 if not tool_uses:
                     logger.warning("stop_reason=tool_use but no tool_uses collected, breaking")
                     break
@@ -311,8 +356,8 @@ class AgentLoop:
                 assistant_msg = Message(
                     role=MessageRole.ASSISTANT,
                     content=assistant_blocks,
-                    stop_reason=stop_reason,
-                    usage=final_usage,
+                    stop_reason=ctx.stop_reason,
+                    usage=ctx.final_usage,
                 )
                 self.state.add_message(assistant_msg)
 
@@ -356,27 +401,24 @@ class AgentLoop:
                     # 产出工具结果事件
                     result_block = tool_msg.content[0] if isinstance(tool_msg.content, list) and tool_msg.content else None
                     if result_block:
-                        yield Event.tool_result(
+                        ev_tr = Event.tool_result(
                             tool_use_id=tu.get("id", ""),
                             content=str(result_block.content),
                             is_error=tool_msg.is_error,
                         )
+                        yield ev_tr
+                        self.thinking_eval.record(ev_tr)
 
                     # v0.3.1: Frozen Snapshot — 写入只落盘，不更新 System Prompt
 
                 # 工具执行完，继续循环 (把结果送回 LLM)
                 continue
 
-            elif stop_reason == "max_tokens":
-                yield Event.warning("模型输出达到 max_tokens 限制，部分内容可能被截断")
-                final_result = full_text
-                break
-
-            # 安全阀: 只有 thinking 没有 text，且 stop_reason 为空 → 异常
-            if not full_text:
+            # 安全阀: 只有 thinking 没有 text → 异常
+            if not full_text and not ctx.tool_uses:
                 logger.warning(
                     "Turn %d: no text output (stop_reason=%s). Breaking.",
-                    self.state.current_turn, stop_reason,
+                    self.state.current_turn, ctx.stop_reason,
                 )
                 break
 
@@ -391,7 +433,7 @@ class AgentLoop:
             thinking_tokens=self.state.total_tokens.get("thinking", 0),
         )
 
-        yield Event(
+        ev_end = Event(
             EventType.TURN_END,
             data={
                 "turns": self.state.current_turn,
@@ -402,8 +444,10 @@ class AgentLoop:
             session_id=self.state.session_id,
             turn_number=self.state.current_turn,
         )
+        yield ev_end
+        self.thinking_eval.record(ev_end)
 
-        yield Event(
+        ev_sess = Event(
             EventType.SESSION_END,
             data={
                 "success": not is_error,
@@ -414,12 +458,20 @@ class AgentLoop:
             },
             session_id=self.state.session_id,
         )
+        yield ev_sess
+        self.thinking_eval.record(ev_sess)
 
         # v0.3.1: 等待后台反思完成
         await self.reviewer.wait_pending()
 
+        # v0.5: ThinkBlock 过程评测 (background, fire-and-forget)
+        asyncio.create_task(self._run_thinking_eval())
+
         # v0.2: 刷新执行日志
         log_path = self.execution_log.flush()
+
+        # v0.5: 重置评测收集器
+        self.thinking_eval.reset()
 
     def interrupt(self) -> None:
         """中断当前执行.
@@ -437,6 +489,16 @@ class AgentLoop:
         await self.llm.close()
 
     # ─── 内部方法 ────────────────────────────────
+
+    async def _run_thinking_eval(self) -> None:
+        try:
+            result = await self.thinking_eval.evaluate()
+            self.thinking_eval.reset()
+            if result.get("overall", -1) >= 0 and self.config.verbose:
+                import sys
+                print(f"\n{ThinkingEvaluator.format_report(result)}", file=sys.stderr)
+        except Exception:
+            pass
 
     def _tool_context(self) -> ToolUseContext:
         """构建工具执行上下文."""
@@ -484,10 +546,6 @@ class AgentLoop:
         for attempt in range(policy.max_retries + 1):
             try:
                 async for event in self.llm.stream(messages, tool_schemas, system_prompt):
-                    if event.type == EventType.ERROR:
-                        error_msg = event.data.get("error", "")
-                        # 检查是否是 retryable HTTP 错误
-                        raise RuntimeError(error_msg)
                     yield event
                 # 成功 → 返回
                 self._last_retry_count = attempt

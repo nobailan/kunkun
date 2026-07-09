@@ -75,19 +75,14 @@ async def read_file_tool(args: ReadFileInput, ctx: ToolUseContext) -> ToolResult
     if not file_path.is_file():
         return ToolResult(data=f"路径不是文件: {args.file_path}", is_error=True)
 
-    # 文件大小检查 (>10MB 拒绝读取)
+    # 文件大小检查
     try:
         file_size = file_path.stat().st_size
     except OSError as e:
         return ToolResult(data=f"无法访问文件: {e}", is_error=True)
 
-    max_size = 10 * 1024 * 1024  # 10 MB
-    if file_size > max_size:
-        return ToolResult(
-            data=f"文件过大 ({file_size / (1024*1024):.1f}MB)，超过上限 ({max_size / (1024*1024):.0f}MB)。"
-            f"请使用 bash 命令查看或使用 offset/limit 分段读取。",
-            is_error=True,
-        )
+    file_mb = file_size / (1024 * 1024)
+    is_large = file_size > 2 * 1024 * 1024  # > 2MB 视为大文件
 
     # 读取文件
     try:
@@ -97,26 +92,51 @@ async def read_file_tool(args: ReadFileInput, ctx: ToolUseContext) -> ToolResult
             data="文件不是 UTF-8 文本文件，可能是二进制文件。请使用 bash 命令处理。",
             is_error=True,
         )
+    except MemoryError:
+        return ToolResult(
+            data=f"文件过大 ({file_mb:.1f}MB)，内存不足。"
+                 f"请用 bash (head/tail/grep/wc) 分段处理。",
+            is_error=True,
+        )
     except Exception as e:
         return ToolResult(data=f"读取文件失败: {e}", is_error=True)
 
     lines = content.split("\n")
     total_lines = len(lines)
 
-    # 应用 offset/limit
+    # 大文件: 返回元数据 + 头中尾采样
+    if is_large:
+        parts = [f"📂 大文件: {file_path.name} ({file_mb:.1f}MB, {total_lines:,} 行)\n"]
+        parts.append("═══ 文件头部 (前 30 行) ═══")
+        for i in range(min(30, total_lines)):
+            parts.append(f"{i + 1:6d}\t{lines[i][:200]}")
+        if total_lines > 80:
+            mid = total_lines // 2
+            parts.append(f"\n═══ 文件中部 (第 {mid:,} 行) ═══")
+            for i in range(mid - 10, min(mid + 10, total_lines)):
+                parts.append(f"{i + 1:6d}\t{lines[i][:200]}")
+        if total_lines > 60:
+            parts.append(f"\n═══ 文件尾部 (最后 30 行) ═══")
+            for i in range(max(0, total_lines - 30), total_lines):
+                parts.append(f"{i + 1:6d}\t{lines[i][:200]}")
+        parts.append(
+            f"\n💡 大文件自动采样。用 offset + limit 分段读取指定区间，"
+            f"或用 grep 搜索关键词定位目标行。"
+        )
+        return ToolResult(data="\n".join(parts))
+
+    # 小文件: 正常读取
     start = max(0, args.offset)
     end = min(start + max(1, min(args.limit, MAX_LINES)), total_lines)
 
-    # 行号标注输出 (借鉴 cc-haha: `{line_number}\t{line_content}`)
     result_lines: list[str] = []
     for i in range(start, end):
         result_lines.append(f"{i + 1:6d}\t{lines[i]}")
 
     result_text = "\n".join(result_lines)
 
-    # 附加文件信息
-    header = f"📄 {file_path} ({total_lines} 行, {file_size:,} bytes)"
+    header = f"📄 {file_path.name} ({total_lines} 行, {file_mb:.2f}MB)"
     if start > 0 or end < total_lines:
-        header += f" [显示行 {start + 1}-{end}]"
+        header += f" [行 {start + 1}-{end}]"
 
     return ToolResult(data=f"{header}\n\n{result_text}")

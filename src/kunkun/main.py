@@ -22,6 +22,7 @@ from kunkun.core.agent_loop import AgentLoop
 from kunkun.core.state import HarnessConfig
 from kunkun.cli.tui import ConsoleRenderer, HeadlessRenderer
 
+from kunkun.core.thinking_eval import ThinkingEvaluator
 logger = logging.getLogger(__name__)
 
 
@@ -109,9 +110,9 @@ async def run_interactive(config: HarnessConfig) -> int:
     skill_count = len(agent.skills.load())
 
     print("=" * 60)
-    print("  Kunkun v0.4.3 — DeepSeek 专属编码 Agent")
+    print("  Kunkun v0.7.0 — DeepSeek 专属编码 Agent")
     print(f"  模型: {config.model} | 轻模型: {config.light_model}")
-    print(f"  工作目录: {Path(config.workspace).resolve()}")
+    print(f"  Prompt: {agent.prompt_compiler.profile.value} | 工作目录: {Path(config.workspace).resolve()}")
     print(f"  工具: {', '.join(agent.tools.list_names())}")
     print(f"  记忆: {memory_count} 条 | Skill: {skill_count} 个")
     print(f"  预算: ${agent.router.budget.daily_budget:.0f}/天 | 权限: {config.permission_mode}")
@@ -191,7 +192,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--version",
         action="version",
-        version="kunkun 0.4.3",
+        version="kunkun 0.7.0",
     )
 
     return parser.parse_args(argv)

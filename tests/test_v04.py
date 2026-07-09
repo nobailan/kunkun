@@ -360,7 +360,7 @@ class TestIntegration:
         names = registry.list_names()
         assert "grep" in names
         assert "edit" in names
-        assert len(names) == 16  # + findsymbol, gotodef, findrefs
+        assert len(names) == 17  # + grpo
 
 
 if __name__ == "__main__":

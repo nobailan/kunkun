@@ -49,14 +49,7 @@ class LLMClient:
 
     def __init__(self, config: HarnessConfig):
         self.config = config
-        import os
-        proxy = None
-        for var in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
-            val = os.environ.get(var, "")
-            if val:
-                proxy = val
-                break
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(120.0), proxy=proxy)
+        self._client = httpx.AsyncClient(timeout=httpx.Timeout(120.0))
         self.retry_policy = RetryPolicy(
             base_delay=1.0,
             max_delay=60.0,
@@ -116,9 +109,11 @@ class LLMClient:
                     yield event
 
         except httpx.TimeoutException:
-            yield Event(EventType.ERROR, data={"error": "API 请求超时 (120s)"})
-        except httpx.ConnectError as e:
-            yield Event(EventType.ERROR, data={"error": f"无法连接到 API: {e}"})
+            logger.warning("API 请求超时，向上传播以触发重试")
+            raise
+        except httpx.ConnectError:
+            logger.warning("无法连接到 API，向上传播以触发重试")
+            raise
         except Exception as e:
             logger.exception("LLM stream error")
             yield Event(EventType.ERROR, data={"error": str(e)})

@@ -154,3 +154,132 @@ async def todowrite_tool(args: TodoWriteInput, ctx: ToolUseContext) -> ToolResul
     lines.append(f"\n  完成: {completed} | 进行中: {in_progress} | 待处理: {pending}")
 
     return ToolResult(data="\n".join(lines))
+
+
+# ─── GRPO 多版本生成 ────────────────────────────────────
+
+
+class GRPOInput(BaseModel):
+    """grpo 工具输入参数."""
+
+    prompt: str = Field(description="要执行的任务描述")
+
+
+@tool(
+    name="grpo",
+    description=(
+        "GRPO 多版本生成：同一任务用 3 种策略并行执行，LLM-as-Judge 择优返回最佳结果。"
+        "3 条路径: A) 直接实现 B) 先查后做 C) 先分析设计再做。"
+        "适用场景：复杂编码任务（重构、架构设计、算法实现），简单查询不要用。"
+        "DSv4 专属能力：低成本使并行多版本生成可行。"
+    ),
+    permission="write",
+    input_model=GRPOInput,
+)
+async def grpo_tool(args: GRPOInput, ctx: ToolUseContext) -> ToolResult:
+    """GRPO 多版本生成."""
+    parent_config = ctx.metadata.get("_config")
+    if parent_config is None:
+        return ToolResult(data="❌ GRPO 需要父 Agent 配置", is_error=True)
+
+    strategies = [
+        ("direct", "直接实现，一步到位。不要过度分析，直接动手做。"),
+        ("search_first", "先搜索现有代码和文档了解上下文，再动手实现。先 grep/glob 探索，再编码。"),
+        ("design_first", "先分析需求，设计实现方案，再逐步编码。ThinkBlock 充分规划。"),
+    ]
+
+    from kunkun.core.agent_loop import AgentLoop
+
+    async def _run_path(name: str, strategy: str) -> dict:
+        import traceback
+        try:
+            sub = AgentLoop(parent_config)
+            full_prompt = (
+                f"{strategy}\n\n"
+                f"任务: {args.prompt}\n\n"
+                f"注意: 只需在回复中输出代码(用 Markdown 代码块), 不要创建或修改任何文件。"
+            )
+            parts: list[str] = []
+            errors: list[str] = []
+            async for event in sub.run(full_prompt):
+                if event.type.value == "content_block_delta":
+                    if event.data.get("type") == "text":
+                        parts.append(event.data["text"])
+                elif event.type.value == "error":
+                    errors.append(event.data.get("error", ""))
+            await sub.close()
+            result = "".join(parts).strip()
+            if result:
+                return {"path": name, "result": result, "ok": True}
+            return {"path": name, "result": "; ".join(errors) or "(no output)", "ok": False}
+        except Exception as e:
+            return {"path": name, "result": f"{e}\n{traceback.format_exc()}", "ok": False}
+
+    # 并行执行 3 条路径
+    tasks = [_run_path(name, strat) for name, strat in strategies]
+    results = await asyncio.gather(*tasks)
+
+    if not any(r["ok"] for r in results):
+        details = "\n".join(f"  {r['path']}: {r['result'][:200]}" for r in results)
+        return ToolResult(data=f"❌ GRPO: 所有路径执行失败\n{details}", is_error=True)
+
+    # ── LLM-as-Judge ──
+    api_key = parent_config.api_key
+    base_url = parent_config.base_url
+    if not api_key:
+        # 无 API key: 随机选一条成功的
+        best = next(r for r in results if r["ok"])
+        return ToolResult(data=f"⚡ GRPO (无序, 回退到 {best['path']}):\n\n{best['result'][:4000]}")
+
+    comparison = "\n\n---\n\n".join(
+        f"路径 {r['path']}:\n{r['result'][:6000]}" for r in results if r["ok"]
+    )
+
+    try:
+        import httpx, os
+        proxy = os.environ.get("KUN_PROXY", "") or None
+        async with httpx.AsyncClient(timeout=60, proxy=proxy) as client:
+            resp = await client.post(
+                f"{base_url}/v1/chat/completions",
+                json={
+                    "model": parent_config.light_model,
+                    "messages": [{
+                        "role": "user",
+                        "content": (
+                            f"以下是对同一任务的 3 种不同实现结果。选出最佳的一个，"
+                            f"说明它为什么比其他好。用中文回答。\n\n"
+                            f"任务: {args.prompt}\n\n{comparison}\n\n"
+                            f"返回格式: 最佳路径: [direct/search_first/design_first]\n理由: ..."
+                        ),
+                    }],
+                    "max_tokens": 2048,
+                    "temperature": 0.3,
+                },
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+            )
+            if resp.status_code != 200:
+                best = next(r for r in results if r["ok"])
+                return ToolResult(data=f"⚡ GRPO (judge unavailable, fallback to {best['path']}):\n\n{best['result'][:4000]}")
+
+            judge = resp.json()["choices"][0]["message"]["content"]
+    except Exception:
+        best = next(r for r in results if r["ok"])
+        return ToolResult(data=f"⚡ GRPO (judge unavailable, fallback to {best['path']}):\n\n{best['result'][:4000]}")
+
+    # 从 Judge 评语中提取获胜路径, 附加完整代码
+    winner = "direct"  # default
+    for path_name in ["design_first", "search_first", "direct"]:
+        if path_name in judge.lower():
+            winner = path_name
+            break
+    best_result = next((r["result"] for r in results if r["path"] == winner and r["ok"]), results[0]["result"])
+
+    return ToolResult(
+        data=f"⚡ GRPO 多版本生成 (3 路径 → Judge 择优: **{winner}**)\n\n"
+             f"{judge}\n\n"
+             f"---\n\n## 优胜代码 ({winner})\n\n{best_result[:8000]}\n\n"
+             f"📊 路径统计: {sum(1 for r in results if r['ok'])}/3 成功"
+    )

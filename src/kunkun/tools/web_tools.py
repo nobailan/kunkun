@@ -30,12 +30,9 @@ def _get_env(key: str) -> str:
 
 
 def _get_proxy() -> str | None:
-    """读取系统代理设置."""
-    for var in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
-        val = _get_env(var)
-        if val:
-            return val
-    return None
+    """读取 Kun 专用代理设置."""
+    val = _get_env("KUN_PROXY")
+    return val if val else None
 
 # ─── WebFetch ──────────────────────────────────────────
 
