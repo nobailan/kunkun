@@ -66,8 +66,11 @@ cp .env.example .env
 | v0.1 MVP | ✅ | Agent Loop + 4 工具 + CLI |
 | v0.2 基础设施 | ✅ | 错误恢复 + 权限 + 记忆 + 成本路由 |
 | v0.3 Skill 系统 | ✅ | Memory + Skill 自改进闭环，对齐 Hermes |
-| v0.4 工具系统 | ✅ | 工具补全 (16 工具): Grep/Edit/Web/Agent/代码智能 |
-| v0.5 DS 创新 | 计划中 | ThinkBlock 过程评测 + Prompt 粒度编译器 |
+| v0.4 工具系统 | ✅ | 工具补全 (17 工具): Grep/Edit/Web/Agent/代码智能 |
+| v0.5 DS 创新 | ✅ | ThinkBlock 过程评测 (AgentThink) |
+| v0.6 DS 创新 | ✅ | GRPO 多版本生成 (3 路径 → Judge 择优) |
+| v0.7 DS 创新 | ✅ | Prompt 粒度编译器 + AdaRubric 任务评测 + 事件分发重构 |
+| v0.8 Agent Team | 计划中 | AgentRuntime 抽象层 + AgentTeam 协作模式 |
 
 ## 工具 (16 个)
 
@@ -89,6 +92,7 @@ cp .env.example .env
 | `findsymbol` | read | 代码符号搜索 |
 | `gotodef` | read | 跳转定义 |
 | `findrefs` | read | 查找引用 |
+| `grpo` | write | GRPO 多版本生成择优 |
 
 ## Memory + Skill 系统
 

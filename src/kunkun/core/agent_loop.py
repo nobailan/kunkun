@@ -52,6 +52,7 @@ from kunkun.skills.loader import SkillLoader
 from kunkun.skills.usage import SkillUsageStore
 from kunkun.skills.curator import SkillCurator
 from kunkun.core.thinking_eval import ThinkingEvaluator
+from kunkun.core.task_eval import TaskEvaluator
 from kunkun.core.prompt_compiler import PromptCompiler, detect_profile
 from kunkun.tools.decorators import ToolRegistry, ToolUseContext
 
@@ -105,6 +106,7 @@ class AgentLoop:
 
         self._abort = None  # Lazy init in run()
         self._last_retry_count = 0
+        self._last_prompt: str = ""  # v0.7: AdaRubric 任务评测用
 
         # v0.5: ThinkBlock 过程评测
         self.thinking_eval = ThinkingEvaluator(
@@ -115,6 +117,13 @@ class AgentLoop:
 
         # v0.7: Prompt 粒度编译器
         self.prompt_compiler = PromptCompiler(config.model)
+
+        # v0.7: AdaRubric 任务评测
+        self.task_eval = TaskEvaluator(
+            api_key=config.api_key,
+            base_url=config.base_url,
+            light_model=config.light_model,
+        )
 
         # v0.3.1: Frozen Snapshot — 会话启动时生成一次，后续轮次复用
         self._frozen_prompt: str | None = None
@@ -147,6 +156,7 @@ class AgentLoop:
         """
         self.state.status = AgentStatus.IDLE
         self.state.start_time = datetime.now().timestamp()
+        self._last_prompt = prompt  # v0.7: 记录任务用于 AdaRubric
 
         # v0.2: lazy init abort event
         if self._abort is None:
@@ -491,14 +501,40 @@ class AgentLoop:
     # ─── 内部方法 ────────────────────────────────
 
     async def _run_thinking_eval(self) -> None:
+        import sys
         try:
-            result = await self.thinking_eval.evaluate()
+            # ThinkBlock 评测
+            thinking_result = await self.thinking_eval.evaluate()
             self.thinking_eval.reset()
-            if result.get("overall", -1) >= 0 and self.config.verbose:
-                import sys
-                print(f"\n{ThinkingEvaluator.format_report(result)}", file=sys.stderr)
+            if thinking_result.get("overall", -1) >= 0 and self.config.verbose:
+                print(f"\n{ThinkingEvaluator.format_report(thinking_result)}", file=sys.stderr)
+
+            # AdaRubric 任务评测
+            task_trajectory = self._build_task_trajectory()
+            task_result = await self.task_eval.evaluate(
+                task_prompt=self._last_prompt or "",
+                trajectory=task_trajectory,
+            )
+            if task_result.get("overall", -1) >= 0 and self.config.verbose:
+                print(f"\n{TaskEvaluator.format_report(task_result)}", file=sys.stderr)
         except Exception:
             pass
+
+    def _build_task_trajectory(self) -> str:
+        """构建任务执行轨迹摘要."""
+        if not self.thinking_eval.events:
+            return ""
+        parts: list[str] = []
+        for event in self.thinking_eval.events:
+            if event.type == EventType.TOOL_USE:
+                parts.append(f"🔧 {event.data.get('name', '?')}({str(event.data.get('input', {}))[:200]})")
+            elif event.type == EventType.TOOL_RESULT:
+                ok = not event.data.get("is_error", False)
+                preview = str(event.data.get("content", ""))[:200]
+                parts.append(f"→ {'OK' if ok else 'FAIL'}: {preview}")
+            elif event.type == EventType.ERROR:
+                parts.append(f"❌ {event.data.get('error', '')[:200]}")
+        return "\n".join(parts)
 
     def _tool_context(self) -> ToolUseContext:
         """构建工具执行上下文."""
