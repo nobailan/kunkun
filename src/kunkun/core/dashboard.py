@@ -16,7 +16,8 @@ def build_dashboard(report_dir: str = ".kun/reports", output: str | None = None)
     rd = Path(report_dir)
     sessions = _load_sessions(rd)
     evaluations = _load_evaluations(rd)
-    html = _render(sessions, evaluations, len(sessions))
+    cron_status = _load_cron_status()
+    html = _render(sessions, evaluations, cron_status, len(sessions))
     if output is None:
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         output = f".kun/dashboard-{stamp}.html"
@@ -67,6 +68,27 @@ def _load_evaluations(report_dir: Path) -> list[dict]:
     return list(reversed(evals))  # 最新的在前
 
 
+def _cron_section(cron_status: list[dict]) -> str:
+    """渲染 Cron 任务状态卡片."""
+    if not cron_status:
+        return ""
+    rows = ""
+    for t in cron_status:
+        icon = "✅" if t.get("last_success") else "❌" if t.get("last_run") not in ("", "从未执行") else "⬜"
+        rows += f"""<tr>
+            <td>{icon}</td><td><b>{t['name']}</b></td><td><code>{t['expression']}</code></td>
+            <td>{t.get('next_run', '-')[:19]}</td><td>{t.get('last_run', '-')[:19]}</td>
+            <td>{t.get('last_elapsed', 0):.1f}s</td>
+            <td>{t.get('run_count', 0)}</td><td>{t.get('error_count', 0)}</td></tr>"""
+    return f"""<div class="section">
+    <h2>⏰ Cron 定时任务</h2>
+    <table>
+        <thead><tr><th></th><th>任务</th><th>Cron</th><th>下次触发</th><th>上次执行</th><th>耗时</th><th>次数</th><th>错误</th></tr></thead>
+        <tbody>{rows}</tbody>
+    </table>
+</div>"""
+
+
 def _elapsed_chart(sessions: list[dict]) -> str:
     """渲染耗时趋势柱状图."""
     recent = sessions[:30]
@@ -84,7 +106,19 @@ def _elapsed_chart(sessions: list[dict]) -> str:
     return '<div class="vchart">' + "".join(bars) + "</div>"
 
 
-def _render(sessions: list[dict], evaluations: list[dict], total: int) -> str:
+def _load_cron_status() -> list[dict]:
+    """加载 Cron 任务状态."""
+    path = Path(".kun/cron/tasks.json")
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return list(data.values())
+    except Exception:
+        return []
+
+
+def _render(sessions: list[dict], evaluations: list[dict], cron_status: list[dict], total: int) -> str:
     # ── 聚合 ──
     total_events = sum(s["events"] for s in sessions)
     total_tools = sum(s["tool_calls"] for s in sessions)
@@ -249,6 +283,8 @@ th{{color:var(--dim);font-weight:600}}
     </table>
 </div>
 
-<p class="footer">Kunkun v0.8 · 评测仪表盘 · 数据来自 .kun/reports/ + .kun/evaluations.jsonl</p>
+{_cron_section(cron_status)}
+
+<p class="footer">Kunkun v0.9 · 评测仪表盘 · 数据来自 .kun/reports/ + .kun/evaluations.jsonl + .kun/cron/</p>
 </body>
 </html>"""

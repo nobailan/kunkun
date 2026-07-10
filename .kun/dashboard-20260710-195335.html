@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Kunkun 评测仪表盘</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#c9d1d9;--dim:#8b949e;--green:#3fb950;--yellow:#d2991d;--red:#f85149;--blue:#58a6ff}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);padding:24px}
+h1{font-size:24px;margin-bottom:4px}
+.subtitle{color:var(--dim);margin-bottom:24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px}
+.card .value{font-size:28px;font-weight:700}
+.card .label{color:var(--dim);font-size:13px;margin-top:4px}
+.section{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:16px}
+.section h2{font-size:16px;margin-bottom:12px}
+table{width:100%;border-collapse:collapse}
+th,td{padding:6px 10px;text-align:left;border-bottom:1px solid var(--border);font-size:13px}
+th{color:var(--dim);font-weight:600}
+.id{font-family:monospace;color:var(--blue)}
+.bar-row{display:flex;align-items:center;gap:8px;margin:4px 0}
+.bar-label{width:100px;font-size:13px;text-align:right;color:var(--dim);flex-shrink:0}
+.bar-track{flex:1;height:20px;background:var(--border);border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;background:var(--green);border-radius:4px;transition:width .3s}
+.bar-count{width:50px;font-size:13px;text-align:right;flex-shrink:0}
+.vchart{display:flex;align-items:flex-end;gap:2px;height:110px;padding:4px 0}
+.vbar{border-radius:2px 2px 0 0;min-width:4px}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--dim);margin-top:8px}
+.legend span{display:flex;align-items:center;gap:4px}
+.legend .dot{width:10px;height:10px;border-radius:2px}
+.footer{color:var(--dim);font-size:12px;margin-top:24px;text-align:center}
+</style>
+</head>
+<body>
+<h1>📊 Kunkun 评测仪表盘</h1>
+<p class="subtitle">136 个会话 · 12 条评测 · 2026-07-10 19:53</p>
+
+<div class="grid">
+    <div class="card"><div class="value">136</div><div class="label">会话总数</div></div>
+    <div class="card"><div class="value">320,688</div><div class="label">事件总数</div></div>
+    <div class="card"><div class="value">989</div><div class="label">工具调用</div></div>
+    <div class="card"><div class="value">7</div><div class="label">错误/警告</div></div>
+    <div class="card"><div class="value">13285s</div><div class="label">总耗时</div></div>
+    <div class="card"><div class="value">0.0</div><div class="label">平均轮次</div></div>
+</div>
+
+<div class="section">
+    <h2>🧠 ThinkBlock 过度思考评分趋势 (综合)</h2>
+    <div class='vchart'><div class="vbar" style="height:20.0px;width:114px;background:#3fb950" title="34176fd8: paralysis=2 rogue=1 disengage=2"></div><div class="vbar" style="height:10.0px;width:114px;background:#3fb950" title="26647663: paralysis=1 rogue=0 disengage=1"></div><div class="vbar" style="height:10.0px;width:114px;background:#3fb950" title="4e12a054: paralysis=1 rogue=1 disengage=1"></div><div class="vbar" style="height:10.0px;width:114px;background:#3fb950" title="9a9ab5f1: paralysis=1 rogue=0 disengage=0"></div><div class="vbar" style="height:10.0px;width:114px;background:#3fb950" title="b9f17666: paralysis=0 rogue=1 disengage=2"></div><div class="vbar" style="height:10.0px;width:114px;background:#3fb950" title="75692296: paralysis=1 rogue=0 disengage=1"></div><div class="vbar" style="height:0.0px;width:114px;background:#3fb950" title="410dbcf9: paralysis=0 rogue=0 disengage=0"></div></div>
+    <div class="legend"><span><div class="dot" style="background:var(--green)"></div>0-3 健康</span><span><div class="dot" style="background:var(--yellow)"></div>4-6 注意</span><span><div class="dot" style="background:var(--red)"></div>7-10 严重</span></div>
+</div>
+
+<div class="section">
+    <h2>⏱ 执行耗时趋势 (最近 30 会话)</h2>
+    <div class="vchart"><div class="vbar" style="height:2.7878449958182325px;width:26px;background:var(--blue)" title="34176fd8: 10.0s"></div><div class="vbar" style="height:3.652076944521885px;width:26px;background:var(--blue)" title="26647663: 13.1s"></div><div class="vbar" style="height:3.6241984945637027px;width:26px;background:var(--blue)" title="4e12a054: 13.0s"></div><div class="vbar" style="height:4.655701143016448px;width:26px;background:var(--blue)" title="9a9ab5f1: 16.7s"></div><div class="vbar" style="height:5.938109841092835px;width:26px;background:var(--blue)" title="b9f17666: 21.3s"></div><div class="vbar" style="height:2.7320880959018683px;width:26px;background:var(--blue)" title="75692296: 9.8s"></div><div class="vbar" style="height:28.88207415667689px;width:26px;background:var(--blue)" title="f75ccc4b: 103.6s"></div><div class="vbar" style="height:4.376916643434625px;width:26px;background:var(--blue)" title="2be3b5a5: 15.7s"></div><div class="vbar" style="height:4.572065793141901px;width:26px;background:var(--blue)" title="4d0ad979: 16.4s"></div><div class="vbar" style="height:5.7150822414273765px;width:26px;background:var(--blue)" title="e01d339b: 20.5s"></div><div class="vbar" style="height:11.123501533314748px;width:26px;background:var(--blue)" title="ea48edfb: 39.9s"></div><div class="vbar" style="height:3.986618344020073px;width:26px;background:var(--blue)" title="235b6e0f: 14.3s"></div><div class="vbar" style="height:2.899358795650962px;width:26px;background:var(--blue)" title="04ee77f7: 10.4s"></div><div class="vbar" style="height:3.4011708948982435px;width:26px;background:var(--blue)" title="6d2da9d0: 12.2s"></div><div class="vbar" style="height:1.282408698076387px;width:26px;background:var(--blue)" title="0841771b: 4.6s"></div><div class="vbar" style="height:100.0px;width:26px;background:var(--blue)" title="081987e8: 358.7s"></div><div class="vbar" style="height:1.1708948982436578px;width:26px;background:var(--blue)" title="c99a4380: 4.2s"></div><div class="vbar" style="height:1.0872595483691108px;width:26px;background:var(--blue)" title="6e30e00a: 3.9s"></div><div class="vbar" style="height:24.031223863953166px;width:26px;background:var(--blue)" title="b427f811: 86.2s"></div><div class="vbar" style="height:13.744075829383887px;width:26px;background:var(--blue)" title="95c76ee1: 49.3s"></div><div class="vbar" style="height:19.09673822135489px;width:26px;background:var(--blue)" title="3dafcc7b: 68.5s"></div><div class="vbar" style="height:33.67716754948425px;width:26px;background:var(--blue)" title="410dbcf9: 120.8s"></div><div class="vbar" style="height:15.69556732645665px;width:26px;background:var(--blue)" title="0271f2b8: 56.3s"></div><div class="vbar" style="height:13.827711179258435px;width:26px;background:var(--blue)" title="20e52ee7: 49.6s"></div><div class="vbar" style="height:35.09896849735155px;width:26px;background:var(--blue)" title="0a7192ff: 125.9s"></div><div class="vbar" style="height:23.13911346529133px;width:26px;background:var(--blue)" title="0486fbe6: 83.0s"></div><div class="vbar" style="height:93.16977976024533px;width:26px;background:var(--blue)" title="622eb07e: 334.2s"></div><div class="vbar" style="height:26.791190409813215px;width:26px;background:var(--blue)" title="5a842e38: 96.1s"></div><div class="vbar" style="height:14.329523278505715px;width:26px;background:var(--blue)" title="1de7477b: 51.4s"></div><div class="vbar" style="height:11.764705882352942px;width:26px;background:var(--blue)" title="3985359e: 42.2s"></div></div>
+    <div class="legend"><span><div class="dot" style="background:var(--blue)"></div>单次耗时 (秒)</span></div>
+</div>
+
+<div class="section">
+    <h2>📋 AdaRubric 任务维度评分</h2>
+    <p style='color:var(--dim);margin-bottom:8px'>最近 12 条评测中出现的维度平均分</p>
+    <div class="bar-row"><span class="bar-label">模式匹配准确性</span>
+            <div class="bar-track"><div class="bar-fill" style="width:100.0%"></div></div>
+            <span class="bar-count">3.0/3</span></div><div class="bar-row"><span class="bar-label">搜索范围正确性</span>
+            <div class="bar-track"><div class="bar-fill" style="width:100.0%"></div></div>
+            <span class="bar-count">3.0/3</span></div><div class="bar-row"><span class="bar-label">统计信息提供</span>
+            <div class="bar-track"><div class="bar-fill" style="width:100.0%"></div></div>
+            <span class="bar-count">3.0/3</span></div><div class="bar-row"><span class="bar-label">路径与文件范围正确性</span>
+            <div class="bar-track"><div class="bar-fill" style="width:100.0%"></div></div>
+            <span class="bar-count">3.0/3</span></div><div class="bar-row"><span class="bar-label">结果输出完整性</span>
+            <div class="bar-track"><div class="bar-fill" style="width:100.0%"></div></div>
+            <span class="bar-count">3.0/3</span></div><div class="bar-row"><span class="bar-label">执行无错误</span>
+            <div class="bar-track"><div class="bar-fill" style="width:100.0%"></div></div>
+            <span class="bar-count">3.0/3</span></div><div class="bar-row"><span class="bar-label">符合任务规格</span>
+            <div class="bar-track"><div class="bar-fill" style="width:100.0%"></div></div>
+            <span class="bar-count">3.0/3</span></div><div class="bar-row"><span class="bar-label">grep 命令参数正确性</span>
+            <div class="bar-track"><div class="bar-fill" style="width:100.0%"></div></div>
+            <span class="bar-count">3.0/3</span></div><div class="bar-row"><span class="bar-label">任务目标达成度</span>
+            <div class="bar-track"><div class="bar-fill" style="width:100.0%"></div></div>
+            <span class="bar-count">3.0/3</span></div><div class="bar-row"><span class="bar-label">搜索路径与过滤正确性</span>
+            <div class="bar-track"><div class="bar-fill" style="width:100.0%"></div></div>
+            <span class="bar-count">3.0/3</span></div><div class="bar-row"><span class="bar-label">命令执行正确性</span>
+            <div class="bar-track"><div class="bar-fill" style="width:100.0%"></div></div>
+            <span class="bar-count">3.0/3</span></div><div class="bar-row"><span class="bar-label">匹配准确性</span>
+            <div class="bar-track"><div class="bar-fill" style="width:100.0%"></div></div>
+            <span class="bar-count">3.0/3</span></div><div class="bar-row"><span class="bar-label">结果完整性呈现</span>
+            <div class="bar-track"><div class="bar-fill" style="width:66.66666666666666%"></div></div>
+            <span class="bar-count">2.0/3</span></div><div class="bar-row"><span class="bar-label">结果可读性与清晰度</span>
+            <div class="bar-track"><div class="bar-fill" style="width:66.66666666666666%"></div></div>
+            <span class="bar-count">2.0/3</span></div><div class="bar-row"><span class="bar-label">正则表达式匹配准确性</span>
+            <div class="bar-track"><div class="bar-fill" style="width:66.66666666666666%"></div></div>
+            <span class="bar-count">2.0/3</span></div>
+</div>
+
+<div class="section">
+    <h2>🔧 工具调用分布 (Top 10)</h2>
+    <div class="bar-row"><span class="bar-label">read_file</span>
+        <div class="bar-track"><div class="bar-fill" style="width:100.0%"></div></div>
+        <span class="bar-count">495</span></div><div class="bar-row"><span class="bar-label">grep</span>
+        <div class="bar-track"><div class="bar-fill" style="width:26.060606060606062%"></div></div>
+        <span class="bar-count">129</span></div><div class="bar-row"><span class="bar-label">glob</span>
+        <div class="bar-track"><div class="bar-fill" style="width:24.646464646464647%"></div></div>
+        <span class="bar-count">122</span></div><div class="bar-row"><span class="bar-label">bash</span>
+        <div class="bar-track"><div class="bar-fill" style="width:18.98989898989899%"></div></div>
+        <span class="bar-count">94</span></div><div class="bar-row"><span class="bar-label">websearch</span>
+        <div class="bar-track"><div class="bar-fill" style="width:4.646464646464646%"></div></div>
+        <span class="bar-count">23</span></div><div class="bar-row"><span class="bar-label">write_file</span>
+        <div class="bar-track"><div class="bar-fill" style="width:3.4343434343434343%"></div></div>
+        <span class="bar-count">17</span></div><div class="bar-row"><span class="bar-label">findsymbol</span>
+        <div class="bar-track"><div class="bar-fill" style="width:3.0303030303030303%"></div></div>
+        <span class="bar-count">15</span></div><div class="bar-row"><span class="bar-label">todowrite</span>
+        <div class="bar-track"><div class="bar-fill" style="width:3.0303030303030303%"></div></div>
+        <span class="bar-count">15</span></div><div class="bar-row"><span class="bar-label">agent</span>
+        <div class="bar-track"><div class="bar-fill" style="width:2.8282828282828283%"></div></div>
+        <span class="bar-count">14</span></div><div class="bar-row"><span class="bar-label">edit</span>
+        <div class="bar-track"><div class="bar-fill" style="width:2.6262626262626263%"></div></div>
+        <span class="bar-count">13</span></div>
+</div>
+
+<div class="section">
+    <h2>📋 最近会话</h2>
+    <table>
+        <thead><tr><th>Session</th><th>时间</th><th>耗时</th><th>轮次</th><th>工具</th><th>错误</th><th>Think</th><th>评分</th></tr></thead>
+        <tbody><tr>
+            <td class="id">34176fd8</td><td>2026-07-10T18:49:55</td><td>10.0s</td>
+            <td>0</td><td>1</td><td style="">0</td>
+            <td>91</td><td>2/10</td></tr><tr>
+            <td class="id">26647663</td><td>2026-07-10T18:46:32</td><td>13.1s</td>
+            <td>0</td><td>1</td><td style="">0</td>
+            <td>64</td><td>1/10</td></tr><tr>
+            <td class="id">4e12a054</td><td>2026-07-10T15:20:42</td><td>13.0s</td>
+            <td>0</td><td>1</td><td style="">0</td>
+            <td>62</td><td>1/10</td></tr><tr>
+            <td class="id">9a9ab5f1</td><td>2026-07-10T15:16:14</td><td>16.7s</td>
+            <td>0</td><td>1</td><td style="">0</td>
+            <td>46</td><td>1/10</td></tr><tr>
+            <td class="id">b9f17666</td><td>2026-07-10T15:15:27</td><td>21.3s</td>
+            <td>0</td><td>0</td><td style="">0</td>
+            <td>28</td><td>1/10</td></tr><tr>
+            <td class="id">75692296</td><td>2026-07-10T10:55:39</td><td>9.8s</td>
+            <td>0</td><td>1</td><td style="">0</td>
+            <td>94</td><td>1/10</td></tr><tr>
+            <td class="id">f75ccc4b</td><td>2026-07-10T10:51:11</td><td>103.6s</td>
+            <td>0</td><td>7</td><td style="">0</td>
+            <td>939</td><td>-</td></tr><tr>
+            <td class="id">2be3b5a5</td><td>2026-07-10T10:46:50</td><td>15.7s</td>
+            <td>0</td><td>2</td><td style="">0</td>
+            <td>87</td><td>-</td></tr><tr>
+            <td class="id">4d0ad979</td><td>2026-07-10T10:44:55</td><td>16.4s</td>
+            <td>0</td><td>0</td><td style="">0</td>
+            <td>108</td><td>-</td></tr><tr>
+            <td class="id">e01d339b</td><td>2026-07-10T10:42:58</td><td>20.5s</td>
+            <td>0</td><td>2</td><td style="">0</td>
+            <td>653</td><td>-</td></tr><tr>
+            <td class="id">ea48edfb</td><td>2026-07-10T10:40:47</td><td>39.9s</td>
+            <td>0</td><td>0</td><td style="">0</td>
+            <td>24</td><td>-</td></tr><tr>
+            <td class="id">235b6e0f</td><td>2026-07-10T10:36:49</td><td>14.3s</td>
+            <td>0</td><td>1</td><td style="">0</td>
+            <td>125</td><td>-</td></tr><tr>
+            <td class="id">04ee77f7</td><td>2026-07-10T10:35:43</td><td>10.4s</td>
+            <td>0</td><td>1</td><td style="">0</td>
+            <td>65</td><td>-</td></tr><tr>
+            <td class="id">6d2da9d0</td><td>2026-07-10T10:35:02</td><td>12.2s</td>
+            <td>0</td><td>1</td><td style="">0</td>
+            <td>80</td><td>-</td></tr><tr>
+            <td class="id">0841771b</td><td>2026-07-10T10:32:49</td><td>4.6s</td>
+            <td>0</td><td>0</td><td style="">0</td>
+            <td>17</td><td>-</td></tr><tr>
+            <td class="id">081987e8</td><td>2026-07-10T10:24:23</td><td>358.7s</td>
+            <td>0</td><td>0</td><td style="">0</td>
+            <td>647</td><td>-</td></tr><tr>
+            <td class="id">c99a4380</td><td>2026-07-10T10:21:19</td><td>4.2s</td>
+            <td>0</td><td>0</td><td style="">0</td>
+            <td>18</td><td>-</td></tr><tr>
+            <td class="id">6e30e00a</td><td>2026-07-10T10:20:40</td><td>3.9s</td>
+            <td>0</td><td>0</td><td style="">0</td>
+            <td>16</td><td>-</td></tr><tr>
+            <td class="id">b427f811</td><td>2026-07-10T10:15:00</td><td>86.2s</td>
+            <td>0</td><td>8</td><td style="">0</td>
+            <td>400</td><td>-</td></tr><tr>
+            <td class="id">95c76ee1</td><td>2026-07-10T10:07:46</td><td>49.3s</td>
+            <td>0</td><td>5</td><td style="">0</td>
+            <td>863</td><td>-</td></tr></tbody>
+    </table>
+</div>
+
+<div class="section">
+    <h2>⏰ Cron 定时任务</h2>
+    <table>
+        <thead><tr><th></th><th>任务</th><th>Cron</th><th>下次触发</th><th>上次执行</th><th>耗时</th><th>次数</th><th>错误</th></tr></thead>
+        <tbody><tr>
+            <td>✅</td><td><b>daily-review</b></td><td><code>0 9 * * 1-5</code></td>
+            <td>2026-07-11T09:00:00</td><td>2026-07-10T09:00:15</td>
+            <td>45.2s</td>
+            <td>23</td><td>1</td></tr><tr>
+            <td>✅</td><td><b>health-check</b></td><td><code>*/30 * * * *</code></td>
+            <td>2026-07-10T19:30:00</td><td>2026-07-10T19:00:01</td>
+            <td>2.1s</td>
+            <td>487</td><td>0</td></tr></tbody>
+    </table>
+</div>
+
+<p class="footer">Kunkun v0.9 · 评测仪表盘 · 数据来自 .kun/reports/ + .kun/evaluations.jsonl + .kun/cron/</p>
+</body>
+</html>

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Kunkun 评测仪表盘</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#c9d1d9;--dim:#8b949e;--green:#3fb950;--yellow:#d2991d;--red:#f85149;--blue:#58a6ff}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);padding:24px}
+h1{font-size:24px;margin-bottom:4px}
+.subtitle{color:var(--dim);margin-bottom:24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px}
+.card .value{font-size:28px;font-weight:700}
+.card .label{color:var(--dim);font-size:13px;margin-top:4px}
+.section{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:16px}
+.section h2{font-size:16px;margin-bottom:12px}
+table{width:100%;border-collapse:collapse}
+th,td{padding:6px 10px;text-align:left;border-bottom:1px solid var(--border);font-size:13px}
+th{color:var(--dim);font-weight:600}
+.id{font-family:monospace;color:var(--blue)}
+.bar-row{display:flex;align-items:center;gap:8px;margin:4px 0}
+.bar-label{width:100px;font-size:13px;text-align:right;color:var(--dim);flex-shrink:0}
+.bar-track{flex:1;height:20px;background:var(--border);border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;background:var(--green);border-radius:4px;transition:width .3s}
+.bar-count{width:50px;font-size:13px;text-align:right;flex-shrink:0}
+.vchart{display:flex;align-items:flex-end;gap:2px;height:110px;padding:4px 0}
+.vbar{border-radius:2px 2px 0 0;min-width:4px}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--dim);margin-top:8px}
+.legend span{display:flex;align-items:center;gap:4px}
+.legend .dot{width:10px;height:10px;border-radius:2px}
+.footer{color:var(--dim);font-size:12px;margin-top:24px;text-align:center}
+</style>
+</head>
+<body>
+<h1>📊 Kunkun 评测仪表盘</h1>
+<p class="subtitle">116 个会话 · 2 条评测 · 2026-07-10 10:02</p>
+
+<div class="grid">
+    <div class="card"><div class="value">116</div><div class="label">会话总数</div></div>
+    <div class="card"><div class="value">306,424</div><div class="label">事件总数</div></div>
+    <div class="card"><div class="value">957</div><div class="label">工具调用</div></div>
+    <div class="card"><div class="value">7</div><div class="label">错误/警告</div></div>
+    <div class="card"><div class="value">12461s</div><div class="label">总耗时</div></div>
+    <div class="card"><div class="value">0.0</div><div class="label">平均轮次</div></div>
+</div>
+
+<div class="section">
+    <h2>🧠 ThinkBlock 过度思考评分趋势 (综合)</h2>
+    <div class='vchart'><div class="vbar" style="height:0.0px;width:800px;background:#3fb950" title="410dbcf9: paralysis=0 rogue=0 disengage=0"></div></div>
+    <div class="legend"><span><div class="dot" style="background:var(--green)"></div>0-3 健康</span><span><div class="dot" style="background:var(--yellow)"></div>4-6 注意</span><span><div class="dot" style="background:var(--red)"></div>7-10 严重</span></div>
+</div>
+
+<div class="section">
+    <h2>📋 AdaRubric 任务维度评分</h2>
+    
+    <p style='color:var(--dim)'>暂无评测数据</p>
+</div>
+
+<div class="section">
+    <h2>🔧 工具调用分布 (Top 10)</h2>
+    <div class="bar-row"><span class="bar-label">read_file</span>
+        <div class="bar-track"><div class="bar-fill" style="width:100.0%"></div></div>
+        <span class="bar-count">490</span></div><div class="bar-row"><span class="bar-label">grep</span>
+        <div class="bar-track"><div class="bar-fill" style="width:23.877551020408163%"></div></div>
+        <span class="bar-count">117</span></div><div class="bar-row"><span class="bar-label">glob</span>
+        <div class="bar-track"><div class="bar-fill" style="width:23.6734693877551%"></div></div>
+        <span class="bar-count">116</span></div><div class="bar-row"><span class="bar-label">bash</span>
+        <div class="bar-track"><div class="bar-fill" style="width:19.183673469387756%"></div></div>
+        <span class="bar-count">94</span></div><div class="bar-row"><span class="bar-label">websearch</span>
+        <div class="bar-track"><div class="bar-fill" style="width:3.877551020408163%"></div></div>
+        <span class="bar-count">19</span></div><div class="bar-row"><span class="bar-label">write_file</span>
+        <div class="bar-track"><div class="bar-fill" style="width:3.4693877551020407%"></div></div>
+        <span class="bar-count">17</span></div><div class="bar-row"><span class="bar-label">findsymbol</span>
+        <div class="bar-track"><div class="bar-fill" style="width:3.061224489795918%"></div></div>
+        <span class="bar-count">15</span></div><div class="bar-row"><span class="bar-label">todowrite</span>
+        <div class="bar-track"><div class="bar-fill" style="width:3.061224489795918%"></div></div>
+        <span class="bar-count">15</span></div><div class="bar-row"><span class="bar-label">agent</span>
+        <div class="bar-track"><div class="bar-fill" style="width:2.857142857142857%"></div></div>
+        <span class="bar-count">14</span></div><div class="bar-row"><span class="bar-label">edit</span>
+        <div class="bar-track"><div class="bar-fill" style="width:2.4489795918367347%"></div></div>
+        <span class="bar-count">12</span></div>
+</div>
+
+<div class="section">
+    <h2>📋 最近会话</h2>
+    <table>
+        <thead><tr><th>Session</th><th>时间</th><th>耗时</th><th>轮次</th><th>工具</th><th>错误</th><th>Think</th><th>评分</th></tr></thead>
+        <tbody><tr>
+            <td class="id">ff8fd2cb</td><td>2026-07-09T15:56:58</td><td>195.9s</td>
+            <td>0</td><td>6</td><td style="">0</td>
+            <td>784</td><td>-</td></tr><tr>
+            <td class="id">fdcff46c</td><td>2026-07-09T16:54:30</td><td>1114.1s</td>
+            <td>0</td><td>2</td><td style="">0</td>
+            <td>1193</td><td>-</td></tr><tr>
+            <td class="id">fa40cc07</td><td>2026-07-07T00:35:00</td><td>17.9s</td>
+            <td>0</td><td>6</td><td style="">0</td>
+            <td>0</td><td>-</td></tr><tr>
+            <td class="id">fa0802b2</td><td>2026-07-09T07:57:49</td><td>71.1s</td>
+            <td>0</td><td>0</td><td style="">0</td>
+            <td>2642</td><td>-</td></tr><tr>
+            <td class="id">f9eef3fe</td><td>2026-07-09T15:33:44</td><td>34.0s</td>
+            <td>0</td><td>2</td><td style="">0</td>
+            <td>1104</td><td>-</td></tr><tr>
+            <td class="id">f86b0a83</td><td>2026-07-07T12:06:20</td><td>63.1s</td>
+            <td>0</td><td>10</td><td style="">0</td>
+            <td>510</td><td>-</td></tr><tr>
+            <td class="id">f7fce8a9</td><td>2026-07-09T15:40:24</td><td>19.0s</td>
+            <td>0</td><td>0</td><td style="">0</td>
+            <td>481</td><td>-</td></tr><tr>
+            <td class="id">f7cee4d9</td><td>2026-07-09T15:29:52</td><td>45.6s</td>
+            <td>0</td><td>8</td><td style="">0</td>
+            <td>93</td><td>-</td></tr><tr>
+            <td class="id">f797d7d3</td><td>2026-07-09T15:57:41</td><td>49.0s</td>
+            <td>0</td><td>12</td><td style="">0</td>
+            <td>1775</td><td>-</td></tr><tr>
+            <td class="id">f7824bbd</td><td>2026-07-09T15:40:43</td><td>2.2s</td>
+            <td>0</td><td>1</td><td style="">0</td>
+            <td>56</td><td>-</td></tr><tr>
+            <td class="id">f5e7992c</td><td>2026-07-09T08:30:45</td><td>115.1s</td>
+            <td>0</td><td>20</td><td style="">0</td>
+            <td>913</td><td>-</td></tr><tr>
+            <td class="id">f3c3b5bb</td><td>2026-07-09T16:04:20</td><td>18.4s</td>
+            <td>0</td><td>0</td><td style="">0</td>
+            <td>704</td><td>-</td></tr><tr>
+            <td class="id">f3bc633d</td><td>2026-07-09T15:30:44</td><td>31.4s</td>
+            <td>0</td><td>6</td><td style="">0</td>
+            <td>54</td><td>-</td></tr><tr>
+            <td class="id">ed1217c5</td><td>2026-07-09T14:44:42</td><td>72.9s</td>
+            <td>0</td><td>13</td><td style="">0</td>
+            <td>862</td><td>-</td></tr><tr>
+            <td class="id">e93d4ab8</td><td>2026-07-09T07:57:49</td><td>61.9s</td>
+            <td>0</td><td>8</td><td style="">0</td>
+            <td>1977</td><td>-</td></tr><tr>
+            <td class="id">e63f04d3</td><td>2026-07-07T11:39:17</td><td>42.9s</td>
+            <td>0</td><td>2</td><td style="color:var(--red)">1</td>
+            <td>43</td><td>-</td></tr><tr>
+            <td class="id">e455051e</td><td>2026-07-09T15:45:38</td><td>28.6s</td>
+            <td>0</td><td>5</td><td style="">0</td>
+            <td>766</td><td>-</td></tr><tr>
+            <td class="id">dafa8c01</td><td>2026-07-09T15:45:23</td><td>185.1s</td>
+            <td>0</td><td>3</td><td style="">0</td>
+            <td>1051</td><td>-</td></tr><tr>
+            <td class="id">d900517e</td><td>2026-07-09T14:20:56</td><td>98.8s</td>
+            <td>0</td><td>11</td><td style="">0</td>
+            <td>507</td><td>-</td></tr><tr>
+            <td class="id">d8d6aeb8</td><td>2026-07-07T00:35:36</td><td>30.6s</td>
+            <td>0</td><td>14</td><td style="">0</td>
+            <td>0</td><td>-</td></tr></tbody>
+    </table>
+</div>
+
+<p class="footer">Kunkun v0.8 · 评测仪表盘 · 数据来自 .kun/reports/ + .kun/evaluations.jsonl</p>
+</body>
+</html>
