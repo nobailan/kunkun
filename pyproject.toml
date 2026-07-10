@@ -1,6 +1,6 @@
 [project]
 name = "kunkun"
-version = "0.7.1"
+version = "0.8.0"
 description = "Kun (鲲) — DeepSeek 原生编码 Agent。小而能化大，终成鹏。"
 readme = "README.md"
 requires-python = ">=3.11"

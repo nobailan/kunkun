@@ -201,7 +201,7 @@ class ThinkingEvaluator:
                     json={
                         "model": self.light_model,
                         "messages": [{"role": "user", "content": prompt}],
-                        "max_tokens": 512,
+                        "max_tokens": 1024,
                         "temperature": 0.1,
                     },
                     headers={

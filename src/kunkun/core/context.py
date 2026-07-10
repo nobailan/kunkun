@@ -356,8 +356,10 @@ class ContextManager:
         import sys
 
         cwd = Path(self.config.workspace).resolve()
+        from datetime import datetime
         lines = [
             "\n## 运行环境\n",
+            f"- 当前日期: {datetime.now().strftime('%Y年%m月%d日')}",
             f"- 工作目录: `{cwd}`",
             f"- 操作系统: {platform.system()} {platform.release()}",
             f"- Python 版本: {sys.version.split()[0]}",

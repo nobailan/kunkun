@@ -87,14 +87,13 @@ class TaskEvaluator:
         )
 
         try:
-            proxy = os.environ.get("KUN_PROXY", "") or None
-            async with httpx.AsyncClient(timeout=60, proxy=proxy) as client:
+            async with httpx.AsyncClient(timeout=60) as client:
                 resp = await client.post(
                     f"{self.base_url}/v1/chat/completions",
                     json={
                         "model": self.light_model,
                         "messages": [{"role": "user", "content": prompt}],
-                        "max_tokens": 1024,
+                        "max_tokens": 2048,
                         "temperature": 0.2,
                     },
                     headers={
@@ -105,6 +104,8 @@ class TaskEvaluator:
                 if resp.status_code != 200:
                     return self._empty_result(f"API {resp.status_code}")
                 content = resp.json()["choices"][0]["message"]["content"]
+                if not content or not content.strip():
+                    return self._empty_result("Empty flash response")
         except Exception as e:
             return self._empty_result(str(e))
 

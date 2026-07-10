@@ -144,14 +144,14 @@ async def websearch_tool(args: WebSearchInput, ctx: ToolUseContext) -> ToolResul
     num = min(args.num_results, 10)
     proxy = _get_proxy()
 
-    # ── 优先 Tavily ──
+    # ── 优先 Tavily (API 直连, 不走代理) ──
     tavily_key = _get_env("TAVILY_API_KEY")
     if tavily_key:
-        result = await _tavily_search(query, num, tavily_key, proxy)
+        result = await _tavily_search(query, num, tavily_key, proxy=None)
         if result:
             return result
 
-    # ── Fallback: DuckDuckGo ──
+    # ── Fallback: DuckDuckGo (需代理) ──
     return await _ddg_search(query, num, proxy)
 
 

@@ -110,7 +110,8 @@ class AgentLoop:
 
         self._abort = None  # Lazy init in run()
         self._last_retry_count = 0
-        self._last_prompt: str = ""  # v0.7: AdaRubric 任务评测用
+        self._last_prompt: str = ""
+        self._pending_eval_task: asyncio.Task | None = None
 
         # v0.5: ThinkBlock 过程评测
         self.thinking_eval = ThinkingEvaluator(
@@ -211,9 +212,6 @@ class AgentLoop:
                 self._frozen_prompt += f"\n## 项目记忆\n\n{self._frozen_memory}"
             if self._frozen_skills:
                 self._frozen_prompt += f"\n## 项目 Skill\n\n{self._frozen_skills}"
-
-        memory_context = ""  # already in frozen prompt
-        skill_context = ""   # already in frozen prompt
 
         # ─── v0.2: 成本路由 ───
         routed_model = self.router.route(prompt)
@@ -501,13 +499,10 @@ class AgentLoop:
         await self.reviewer.wait_pending()
 
         # v0.5: ThinkBlock 过程评测 (background, fire-and-forget)
-        asyncio.create_task(self._run_thinking_eval())
+        self._pending_eval_task = asyncio.create_task(self._run_thinking_eval())
 
         # v0.2: 刷新执行日志
         log_path = self.execution_log.flush()
-
-        # v0.5: 重置评测收集器
-        self.thinking_eval.reset()
 
     def interrupt(self) -> None:
         """中断当前执行.
@@ -522,6 +517,11 @@ class AgentLoop:
 
     async def close(self) -> None:
         """清理资源."""
+        if self._pending_eval_task and not self._pending_eval_task.done():
+            try:
+                await self._pending_eval_task
+            except Exception:
+                pass
         await self.llm.close()
 
     # ─── 内部方法 ────────────────────────────────
@@ -529,20 +529,35 @@ class AgentLoop:
     async def _run_thinking_eval(self) -> None:
         import sys
         try:
+            # 先保存轨迹再评测 (reset 会清空事件)
+            task_trajectory = self._build_task_trajectory()
+
             # ThinkBlock 评测
             thinking_result = await self.thinking_eval.evaluate()
             self.thinking_eval.reset()
             if thinking_result.get("overall", -1) >= 0 and self.config.verbose:
-                print(f"\n{ThinkingEvaluator.format_report(thinking_result)}", file=sys.stderr)
+                logger.info("Thinking eval: %s", ThinkingEvaluator.format_report(thinking_result))
 
             # AdaRubric 任务评测
-            task_trajectory = self._build_task_trajectory()
             task_result = await self.task_eval.evaluate(
                 task_prompt=self._last_prompt or "",
                 trajectory=task_trajectory,
             )
             if task_result.get("overall", -1) >= 0 and self.config.verbose:
                 print(f"\n{TaskEvaluator.format_report(task_result)}", file=sys.stderr)
+
+            # 持久化评测数据
+            import json, os
+            from pathlib import Path as P
+            eval_entry = {
+                "session_id": self.state.session_id,
+                "timestamp": datetime.now().isoformat(),
+                "thinking_eval": thinking_result,
+                "task_eval": task_result,
+            }
+            eval_path = P(".kun/evaluations.jsonl")
+            with open(eval_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(eval_entry, ensure_ascii=False) + "\n")
         except Exception:
             pass
 
