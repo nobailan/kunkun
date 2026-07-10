@@ -293,6 +293,7 @@ class KunkunHarness(AgentRuntime):
         executor = self._get_executor()
 
         def _run_in_thread():
+            import traceback, sys
             loop = asyncio_mod.new_event_loop()
             asyncio_mod.set_event_loop(loop)
             try:
@@ -300,6 +301,7 @@ class KunkunHarness(AgentRuntime):
                 agent = AgentLoop(role_config)
                 try:
                     async def _collect():
+                        mailbox.put(AgentMessage("text", text="[sub-agent started]"))
                         async for event in agent.run(full_prompt):
                             if event.type.value == "content_block_delta":
                                 if event.data.get("type") == "text":
@@ -307,7 +309,6 @@ class KunkunHarness(AgentRuntime):
                             elif event.type.value == "error":
                                 mailbox.put(AgentMessage("error", text=event.data.get("error", "")))
                             elif event.type.value == "session_end":
-                                # 传递结构化结果
                                 mailbox.put(AgentMessage("result", data={
                                     "turns": event.data.get("turns", 0),
                                     "total_tokens": event.data.get("total_tokens", {}),
@@ -315,11 +316,16 @@ class KunkunHarness(AgentRuntime):
                                     "success": event.data.get("success", False),
                                 }))
                     loop.run_until_complete(_collect())
+                except Exception as e:
+                    mailbox.put(AgentMessage("error", text=f"AgentLoop error: {e}"))
                 finally:
-                    loop.run_until_complete(agent.close())
+                    try:
+                        loop.run_until_complete(agent.close())
+                    except Exception:
+                        pass
                 mailbox.put(AgentMessage("done"))
             except Exception as e:
-                mailbox.put(AgentMessage("error", text=str(e)))
+                mailbox.put(AgentMessage("error", text=f"Thread error: {e}\n{traceback.format_exc()}"))
                 mailbox.put(AgentMessage("done"))
             finally:
                 loop.close()

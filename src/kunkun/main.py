@@ -233,6 +233,12 @@ def main(argv: list[str] | None = None):
     # 加载配置
     config = HarnessConfig.from_env()
 
+    # MCP 初始化 (自动连接 .kun/mcp.json 中的 Server)
+    from kunkun.mcp import init_mcp
+    mcp_count = init_mcp()
+    if mcp_count > 0:
+        print(f"🔌 MCP: {mcp_count} server(s) connected", file=sys.stderr)
+
     # 命令行参数覆盖
     if args.model:
         config.model = args.model
