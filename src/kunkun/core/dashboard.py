@@ -67,6 +67,23 @@ def _load_evaluations(report_dir: Path) -> list[dict]:
     return list(reversed(evals))  # 最新的在前
 
 
+def _elapsed_chart(sessions: list[dict]) -> str:
+    """渲染耗时趋势柱状图."""
+    recent = sessions[:30]
+    if not recent:
+        return ""
+    max_elapsed = max(s["elapsed"] for s in recent) or 1
+    bar_w = max(4, 800 // max(len(recent), 1))
+    bars = []
+    for s in recent:
+        h = s["elapsed"] / max_elapsed * 100
+        bars.append(
+            f'<div class="vbar" style="height:{h}px;width:{bar_w}px;background:var(--blue)" '
+            f'title="{s["id"][:8]}: {s["elapsed"]}s"></div>'
+        )
+    return '<div class="vchart">' + "".join(bars) + "</div>"
+
+
 def _render(sessions: list[dict], evaluations: list[dict], total: int) -> str:
     # ── 聚合 ──
     total_events = sum(s["events"] for s in sessions)
@@ -205,6 +222,12 @@ th{{color:var(--dim);font-weight:600}}
     <h2>🧠 ThinkBlock 过度思考评分趋势 (综合)</h2>
     {"<div class='vchart'>" + thinking_chart + "</div>" if thinking_chart else "<p style='color:var(--dim)'>暂无评测数据，执行几次对话后自动生成</p>"}
     <div class="legend"><span><div class="dot" style="background:var(--green)"></div>0-3 健康</span><span><div class="dot" style="background:var(--yellow)"></div>4-6 注意</span><span><div class="dot" style="background:var(--red)"></div>7-10 严重</span></div>
+</div>
+
+<div class="section">
+    <h2>⏱ 执行耗时趋势 (最近 30 会话)</h2>
+    {_elapsed_chart(sessions)}
+    <div class="legend"><span><div class="dot" style="background:var(--blue)"></div>单次耗时 (秒)</span></div>
 </div>
 
 <div class="section">

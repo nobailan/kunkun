@@ -51,6 +51,13 @@ from kunkun.core.background_review import BackgroundReviewer
 from kunkun.skills.loader import SkillLoader
 from kunkun.skills.usage import SkillUsageStore
 from kunkun.skills.curator import SkillCurator
+from kunkun.core.event_dispatch import (
+    EventDispatchChain, EventContext,
+    make_text_handler, make_thinking_handler,
+    make_tool_use_handler, make_message_stop_handler,
+    make_error_handler, make_passthrough_handler,
+    StopReasonRouter, default_stop_reason_router,
+)
 from kunkun.core.thinking_control import (
     OverthinkingDetector,
     ROLLBACK_INSTRUCTION,
@@ -265,32 +272,9 @@ class AgentLoop:
 
             # --- LLM Stream (with retry) ---
             self._last_retry_count = 0
-            from kunkun.core.event_dispatch import (
-                EventDispatchChain, EventContext,
-                make_text_handler, make_thinking_handler,
-                make_tool_use_handler, make_message_stop_handler,
-                make_error_handler, make_passthrough_handler,
-                StopReasonRouter, default_stop_reason_router,
-            )
 
             ctx = EventContext()
-
-            async def _on_msg_start(e: Event, c: EventContext) -> bool:
-                self.state.status = AgentStatus.STREAMING
-                return True
-
-            chain = (
-                EventDispatchChain()
-                .on(EventType.MESSAGE_START, _on_msg_start)
-                .on_many([EventType.CONTENT_BLOCK_START, EventType.CONTENT_BLOCK_STOP, EventType.MESSAGE_DELTA],
-                         make_passthrough_handler())
-                .on(EventType.CONTENT_BLOCK_DELTA, make_text_handler())
-                .on(EventType.CONTENT_BLOCK_DELTA,
-                    make_thinking_handler(self.config.think_visibility == "show"))
-                .on(EventType.TOOL_USE, make_tool_use_handler())
-                .on(EventType.MESSAGE_STOP, make_message_stop_handler())
-                .on(EventType.ERROR, make_error_handler())
-            )
+            chain = self._build_dispatch_chain()
 
             try:
                 async for event in self._stream_with_retry(
@@ -526,6 +510,28 @@ class AgentLoop:
 
     # ─── 内部方法 ────────────────────────────────
 
+    def _build_dispatch_chain(self) -> EventDispatchChain:
+        """构建事件分发链 (避免循环内重复创建)."""
+
+        async def _on_msg_start(e: Event, c: EventContext) -> bool:
+            self.state.status = AgentStatus.STREAMING
+            return True
+
+        return (
+            EventDispatchChain()
+            .on(EventType.MESSAGE_START, _on_msg_start)
+            .on_many([EventType.CONTENT_BLOCK_START,
+                      EventType.CONTENT_BLOCK_STOP,
+                      EventType.MESSAGE_DELTA],
+                     make_passthrough_handler())
+            .on(EventType.CONTENT_BLOCK_DELTA, make_text_handler())
+            .on(EventType.CONTENT_BLOCK_DELTA,
+                make_thinking_handler(self.config.think_visibility == "show"))
+            .on(EventType.TOOL_USE, make_tool_use_handler())
+            .on(EventType.MESSAGE_STOP, make_message_stop_handler())
+            .on(EventType.ERROR, make_error_handler())
+        )
+
     async def _run_thinking_eval(self) -> None:
         import sys
         try:
@@ -543,8 +549,8 @@ class AgentLoop:
                 task_prompt=self._last_prompt or "",
                 trajectory=task_trajectory,
             )
-            if task_result.get("overall", -1) >= 0 and self.config.verbose:
-                print(f"\n{TaskEvaluator.format_report(task_result)}", file=sys.stderr)
+            if task_result.get("overall", -1) >= 0:
+                logger.info("Task eval:\n%s", TaskEvaluator.format_report(task_result))
 
             # 持久化评测数据
             import json, os
@@ -559,7 +565,7 @@ class AgentLoop:
             with open(eval_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(eval_entry, ensure_ascii=False) + "\n")
         except Exception:
-            pass
+            logger.debug("Eval task failed", exc_info=True)
 
     def _build_task_trajectory(self) -> str:
         """构建任务执行轨迹摘要."""

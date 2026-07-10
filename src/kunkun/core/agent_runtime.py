@@ -94,11 +94,130 @@ ROLE_PROMPTS: dict[TeamRole, str] = {
 class TeamMessage:
     """Agent 间消息."""
 
-    sender: str          # 发送者 (role name)
-    receiver: str        # 接收者 ("leader" | role name | "all")
-    content: str         # 消息内容
-    msg_type: str = "info"  # "task" | "result" | "question" | "info"
+    sender: str
+    receiver: str
+    content: str
+    msg_type: str = "info"
     task_id: str = ""
+
+
+@dataclass
+class AgentMessage:
+    """异步信箱消息 — 子 Agent → 父 Agent 的结构化通信.
+
+    替代 queue.Queue 纯文本, 支持:
+    - text: 文本 chunk
+    - result: 结构化结果 (token, tool_calls)
+    - error: 错误信息
+    - done: 任务完成
+    """
+
+    msg_type: str  # "text" | "result" | "error" | "done"
+    text: str = ""
+    data: dict | None = None
+
+
+class AgentMailbox:
+    """异步信箱 — 1:1 通信 (子 Agent → 父 Agent)."""
+
+    def __init__(self):
+        import queue as _queue
+        from concurrent.futures import ThreadPoolExecutor
+
+        self._queue: _queue.Queue[AgentMessage] = _queue.Queue()
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mailbox")
+
+    def put(self, msg: AgentMessage) -> None:
+        self._queue.put(msg)
+
+    async def get(self) -> AgentMessage:
+        import asyncio as _asyncio
+        return await _asyncio.get_event_loop().run_in_executor(self._executor, self._queue.get)
+
+    def close(self) -> None:
+        self._executor.shutdown(wait=False)
+
+
+# ─── AgentBus (多订阅者) ────────────────────────────────
+
+
+class AgentBus:
+    """消息总线 — 多 Agent 发布/订阅.
+
+    任何 Agent 可以 publish 消息, 任何 Agent 可以 subscribe (带过滤器).
+
+    Usage:
+        bus = AgentBus()
+        bus.subscribe("explorer", lambda msg: print(f"Got: {msg}"))
+        bus.publish(TeamMessage(sender="coder", receiver="all", content="done"))
+    """
+
+    def __init__(self):
+        import asyncio as _asyncio
+
+        self._subscribers: dict[str, list[callable]] = {}  # subscriber_id → [callback]
+        self._filters: dict[str, callable] = {}  # subscriber_id → filter_fn
+        self._pending: list[TeamMessage] = []
+        self._lock = _asyncio.Lock()
+
+    def subscribe(
+        self,
+        subscriber_id: str,
+        callback,
+        filter_fn: callable | None = None,
+    ) -> None:
+        """订阅消息.
+
+        Args:
+            subscriber_id: 订阅者标识
+            callback: async (TeamMessage) -> None
+            filter_fn: (TeamMessage) -> bool, 可选过滤器
+        """
+        if subscriber_id not in self._subscribers:
+            self._subscribers[subscriber_id] = []
+        self._subscribers[subscriber_id].append(callback)
+        if filter_fn:
+            self._filters[subscriber_id] = filter_fn
+
+    def unsubscribe(self, subscriber_id: str) -> None:
+        """取消订阅."""
+        self._subscribers.pop(subscriber_id, None)
+        self._filters.pop(subscriber_id, None)
+
+    async def publish(self, msg: TeamMessage) -> None:
+        """发布消息到所有匹配的订阅者.
+
+        线程安全 — 可从任意线程调用.
+        """
+        async with self._lock:
+            for sid, callbacks in list(self._subscribers.items()):
+                filter_fn = self._filters.get(sid)
+                if filter_fn and not filter_fn(msg):
+                    continue
+                for cb in callbacks:
+                    try:
+                        if hasattr(cb, "__call__"):
+                            result = cb(msg)
+                            if hasattr(result, "__await__"):
+                                await result
+                    except Exception:
+                        pass
+
+    def publish_sync(self, msg: TeamMessage) -> None:
+        """同步发布 (从非 async 线程调用)."""
+        import asyncio as _asyncio
+        try:
+            loop = _asyncio.get_event_loop()
+            if loop.is_running():
+                _asyncio.create_task(self.publish(msg))
+            else:
+                loop.run_until_complete(self.publish(msg))
+        except RuntimeError:
+            pass
+
+    @property
+    def subscriber_count(self) -> int:
+        return len(self._subscribers)
 
 
 # ─── AgentRuntime ABC ──────────────────────────────────
@@ -114,6 +233,7 @@ class AgentRuntime(ABC):
         self.name = name
         self.role = role
         self._messages: list[TeamMessage] = []
+        self._last_result: dict = {}
 
     @abstractmethod
     async def run(self, prompt: str) -> AsyncGenerator[str, None]:
@@ -160,9 +280,8 @@ class KunkunHarness(AgentRuntime):
         return cls._executor
 
     async def run(self, prompt: str) -> AsyncGenerator[str, None]:
-        """执行任务 (线程隔离)."""
+        """执行任务 (线程隔离 + 异步信箱)."""
         import asyncio as asyncio_mod
-        import queue
 
         role_config = type(self.config)(**self.config.__dict__)
         role_config.permission_mode = "accept_edits" if self.role == TeamRole.CODER else "default"
@@ -170,12 +289,10 @@ class KunkunHarness(AgentRuntime):
         role_hint = ROLE_PROMPTS.get(self.role, "")
         full_prompt = f"{prompt}\n{role_hint}" if role_hint else prompt
 
-        # queue.Queue 是线程安全的, 用于跨线程通信
-        result_queue: queue.Queue[dict] = queue.Queue()
+        mailbox = AgentMailbox()
         executor = self._get_executor()
 
         def _run_in_thread():
-            """在独立线程中跑 AgentLoop."""
             loop = asyncio_mod.new_event_loop()
             asyncio_mod.set_event_loop(loop)
             try:
@@ -186,31 +303,46 @@ class KunkunHarness(AgentRuntime):
                         async for event in agent.run(full_prompt):
                             if event.type.value == "content_block_delta":
                                 if event.data.get("type") == "text":
-                                    result_queue.put({"text": event.data["text"]})
+                                    mailbox.put(AgentMessage("text", text=event.data["text"]))
                             elif event.type.value == "error":
-                                result_queue.put({"error": event.data.get("error", "")})
+                                mailbox.put(AgentMessage("error", text=event.data.get("error", "")))
+                            elif event.type.value == "session_end":
+                                # 传递结构化结果
+                                mailbox.put(AgentMessage("result", data={
+                                    "turns": event.data.get("turns", 0),
+                                    "total_tokens": event.data.get("total_tokens", {}),
+                                    "cost_usd": event.data.get("cost_usd", 0),
+                                    "success": event.data.get("success", False),
+                                }))
                     loop.run_until_complete(_collect())
                 finally:
                     loop.run_until_complete(agent.close())
-                result_queue.put({"done": True})
+                mailbox.put(AgentMessage("done"))
             except Exception as e:
-                result_queue.put({"error": str(e), "done": True})
+                mailbox.put(AgentMessage("error", text=str(e)))
+                mailbox.put(AgentMessage("done"))
             finally:
                 loop.close()
 
-        # 提交到线程池
         executor.submit(_run_in_thread)
 
-        # 异步读取 (用自定义 executor 避免默认线程池竞争)
-        loop = asyncio_mod.get_event_loop()
+        # 从信箱读取消息
+        result_data = {}
         while True:
-            msg = await loop.run_in_executor(executor, result_queue.get)
-            if msg.get("done"):
+            msg = await mailbox.get()
+            if msg.msg_type == "done":
                 break
-            if msg.get("text"):
-                yield msg["text"]
-            elif msg.get("error"):
-                yield f"\n[ERROR: {msg['error']}]\n"
+            if msg.msg_type == "text":
+                yield msg.text
+            elif msg.msg_type == "error":
+                yield f"\n[ERROR: {msg.text}]\n"
+            elif msg.msg_type == "result" and msg.data:
+                result_data = msg.data
+
+        # 末尾产出结构化结果
+        if result_data:
+            self._last_result = result_data
+        mailbox.close()
 
     async def close(self) -> None:
         pass
@@ -260,6 +392,7 @@ class AgentTeam:
         self._messages: list[TeamMessage] = []
         self._task_counter = 0
         self.leader_config = leader_config
+        self.bus = AgentBus()  # v0.8: 共享消息总线
 
     def add_runtime(self, runtime: AgentRuntime) -> None:
         """注册一个 Agent 运行时."""
@@ -362,6 +495,13 @@ class AgentTeam:
                 icon = "✅" if r.success else "❌"
                 detail = r.result[:150] if r.success else (r.error or "执行失败")[:150]
                 yield f"  {icon} [{r.assigned_to.value}] {r.task_id}: {detail}...\n"
+                # 通过总线广播结果
+                self.bus.publish_sync(TeamMessage(
+                    sender=r.assigned_to.value,
+                    receiver="all",
+                    content=f"[{r.task_id}] {'OK' if r.success else 'FAIL'}: {detail[:100]}",
+                    msg_type="result",
+                ))
 
         # ── Step 3: 汇总 ──
         yield f"\n📊 完成: {sum(1 for r in results.values() if r.success)}/{len(results)} 成功\n"

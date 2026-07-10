@@ -212,6 +212,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="生成 HTML 评测仪表盘并打开",
     )
     parser.add_argument(
+        "--flowforge",
+        action="store_true",
+        help="FlowForge 模式: 执行任务并以 JSON 输出结果",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version="kunkun 0.8.0",
@@ -243,12 +248,19 @@ def main(argv: list[str] | None = None):
     if args.dashboard:
         from kunkun.core.dashboard import build_dashboard
         import webbrowser
-        # 清理旧仪表盘
         for old in Path(".kun").glob("dashboard-*.html"):
             old.unlink()
         path = build_dashboard(report_dir=config.report_dir)
         webbrowser.open(path.as_uri())
         print(f"📊 仪表盘已生成: {path}")
+        return
+
+    # FlowForge 模式
+    if args.flowforge:
+        if not args.prompt:
+            print("❌ FlowForge 模式需要提供任务描述", file=sys.stderr)
+            sys.exit(1)
+        asyncio.run(_run_flowforge(args.prompt, config))
         return
 
     # 分发模式
@@ -258,6 +270,20 @@ def main(argv: list[str] | None = None):
         exit_code = asyncio.run(run_interactive(config))
 
     sys.exit(exit_code)
+
+
+async def _run_flowforge(prompt: str, config: HarnessConfig) -> None:
+    """FlowForge 模式: 执行任务, 输出 JSON."""
+    import json, uuid
+    from kunkun.core.flowforge_adapter import FlowForgeAdapter, FlowForgeTask
+
+    adapter = FlowForgeAdapter(config)
+    result = await adapter.execute(FlowForgeTask(
+        task_id=uuid.uuid4().hex[:8],
+        prompt=prompt,
+        model=config.model,
+    ))
+    print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
 
 
 async def main_interactive():
