@@ -12,15 +12,12 @@ from datetime import datetime
 from pathlib import Path
 
 
-def build_dashboard(report_dir: str = ".kun/reports", output: str | None = None) -> Path:
+def build_dashboard(report_dir: str = ".kun/reports", output: str = ".kun/dashboard.html") -> Path:
     rd = Path(report_dir)
     sessions = _load_sessions(rd)
     evaluations = _load_evaluations(rd)
     cron_status = _load_cron_status()
     html = _render(sessions, evaluations, cron_status, len(sessions))
-    if output is None:
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        output = f".kun/dashboard-{stamp}.html"
     out = Path(output).resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8")

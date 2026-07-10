@@ -248,11 +248,9 @@ def main(argv: list[str] | None = None):
     if args.dashboard:
         from kunkun.core.dashboard import build_dashboard
         import webbrowser
-        for old in Path(".kun").glob("dashboard-*.html"):
-            old.unlink()
         path = build_dashboard(report_dir=config.report_dir)
         webbrowser.open(path.as_uri())
-        print(f"📊 仪表盘已生成: {path}")
+        print(f"📊 仪表盘已刷新: {path}")
         return
 
     # FlowForge 模式
