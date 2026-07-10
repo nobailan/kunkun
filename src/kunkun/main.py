@@ -274,9 +274,10 @@ def main(argv: list[str] | None = None):
 
 async def _run_flowforge(prompt: str, config: HarnessConfig) -> None:
     """FlowForge 模式: 执行任务, 输出 JSON."""
-    import json, uuid
+    import json, uuid, sys
     from kunkun.core.flowforge_adapter import FlowForgeAdapter, FlowForgeTask
 
+    print(f"🚀 FlowForge 执行中: {prompt[:80]}...", file=sys.stderr)
     adapter = FlowForgeAdapter(config)
     result = await adapter.execute(FlowForgeTask(
         task_id=uuid.uuid4().hex[:8],

@@ -128,9 +128,15 @@ class FlowForgeAdapter:
         output = "".join(output_parts).strip()
         elapsed = (time.monotonic() - t0) * 1000
 
-        # 从 Harness 收集结构化结果
+        # 等待评测落盘 (最多 10 秒)
         sub_result = getattr(harness, "_last_result", {})
-        thinking_eval = self._load_latest_eval(task.task_id)
+        thinking_eval = self._load_latest_eval()
+        if not thinking_eval:
+            for _ in range(20):
+                await asyncio.sleep(0.5)
+                thinking_eval = self._load_latest_eval()
+                if thinking_eval:
+                    break
 
         result = FlowForgeResult(
             task_id=task.task_id,
@@ -208,19 +214,15 @@ class FlowForgeAdapter:
 
     # ─── 内部 ───────────────────────────────────────
 
-    def _load_latest_eval(self, task_id: str) -> dict:
+    def _load_latest_eval(self) -> dict:
         """加载最新的评测数据."""
         path = Path(".kun/evaluations.jsonl")
         if not path.exists():
             return {}
         try:
             lines = path.read_text(encoding="utf-8").strip().split("\n")
-            for line in reversed(lines):
-                if not line.strip():
-                    continue
-                entry = json.loads(line)
-                if entry.get("session_id", "").startswith(task_id[:4]):
-                    return entry
+            if lines:
+                return json.loads(lines[-1])
         except Exception:
             pass
         return {}
