@@ -280,7 +280,7 @@ class KunkunHarness(AgentRuntime):
         return cls._executor
 
     async def run(self, prompt: str) -> AsyncGenerator[str, None]:
-        """执行任务 (线程隔离 + 异步信箱)."""
+        """执行任务 (同 event loop, 独立 httpx 连接)."""
         import asyncio as asyncio_mod
 
         role_config = type(self.config)(**self.config.__dict__)
@@ -289,66 +289,25 @@ class KunkunHarness(AgentRuntime):
         role_hint = ROLE_PROMPTS.get(self.role, "")
         full_prompt = f"{prompt}\n{role_hint}" if role_hint else prompt
 
-        mailbox = AgentMailbox()
-        executor = self._get_executor()
+        from kunkun.core.agent_loop import AgentLoop
+        agent = AgentLoop(role_config)
 
-        def _run_in_thread():
-            import traceback, sys
-            loop = asyncio_mod.new_event_loop()
-            asyncio_mod.set_event_loop(loop)
-            try:
-                from kunkun.core.agent_loop import AgentLoop
-                agent = AgentLoop(role_config)
-                try:
-                    async def _collect():
-                        mailbox.put(AgentMessage("text", text="[sub-agent started]"))
-                        async for event in agent.run(full_prompt):
-                            if event.type.value == "content_block_delta":
-                                if event.data.get("type") == "text":
-                                    mailbox.put(AgentMessage("text", text=event.data["text"]))
-                            elif event.type.value == "error":
-                                mailbox.put(AgentMessage("error", text=event.data.get("error", "")))
-                            elif event.type.value == "session_end":
-                                mailbox.put(AgentMessage("result", data={
-                                    "turns": event.data.get("turns", 0),
-                                    "total_tokens": event.data.get("total_tokens", {}),
-                                    "cost_usd": event.data.get("cost_usd", 0),
-                                    "success": event.data.get("success", False),
-                                }))
-                    loop.run_until_complete(_collect())
-                except Exception as e:
-                    mailbox.put(AgentMessage("error", text=f"AgentLoop error: {e}"))
-                finally:
-                    try:
-                        loop.run_until_complete(agent.close())
-                    except Exception:
-                        pass
-                mailbox.put(AgentMessage("done"))
-            except Exception as e:
-                mailbox.put(AgentMessage("error", text=f"Thread error: {e}\n{traceback.format_exc()}"))
-                mailbox.put(AgentMessage("done"))
-            finally:
-                loop.close()
-
-        executor.submit(_run_in_thread)
-
-        # 从信箱读取消息
-        result_data = {}
-        while True:
-            msg = await mailbox.get()
-            if msg.msg_type == "done":
-                break
-            if msg.msg_type == "text":
-                yield msg.text
-            elif msg.msg_type == "error":
-                yield f"\n[ERROR: {msg.text}]\n"
-            elif msg.msg_type == "result" and msg.data:
-                result_data = msg.data
-
-        # 末尾产出结构化结果
-        if result_data:
-            self._last_result = result_data
-        mailbox.close()
+        try:
+            async for event in agent.run(full_prompt):
+                if event.type.value == "content_block_delta":
+                    if event.data.get("type") == "text":
+                        yield event.data["text"]
+                elif event.type.value == "error":
+                    yield f"\n[ERROR: {event.data.get('error', '')}]\n"
+                elif event.type.value == "session_end":
+                    self._last_result = {
+                        "turns": event.data.get("turns", 0),
+                        "total_tokens": event.data.get("total_tokens", {}),
+                        "cost_usd": event.data.get("cost_usd", 0),
+                        "success": event.data.get("success", False),
+                    }
+        finally:
+            await agent.close()
 
     async def close(self) -> None:
         pass

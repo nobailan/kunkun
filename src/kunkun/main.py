@@ -16,6 +16,7 @@ import argparse
 import asyncio
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from kunkun.core.agent_loop import AgentLoop
@@ -217,6 +218,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="FlowForge 模式: 执行任务并以 JSON 输出结果",
     )
     parser.add_argument(
+        "--cron",
+        action="store_true",
+        help="启动 Cron 调度器 (后台运行, Ctrl+C 停止)",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version="kunkun 0.9.0",
@@ -267,6 +273,11 @@ def main(argv: list[str] | None = None):
         asyncio.run(_run_flowforge(args.prompt, config))
         return
 
+    # Cron 模式
+    if args.cron:
+        _run_cron()
+        return
+
     # 分发模式
     if args.prompt:
         exit_code = asyncio.run(run_once(args.prompt, config))
@@ -289,6 +300,38 @@ async def _run_flowforge(prompt: str, config: HarnessConfig) -> None:
         model=config.model,
     ))
     print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+
+
+def _run_cron() -> None:
+    """启动 Cron 调度器."""
+    import asyncio as _asyncio
+    from kunkun.cron import CronScheduler
+    from kunkun.core.state import HarnessConfig
+
+    config = HarnessConfig.from_env()
+    scheduler = CronScheduler()
+
+    # 默认示例任务
+    async def health_check():
+        print(f"[{datetime.now():%H:%M:%S}] Health check OK", file=sys.stderr)
+        return "OK"
+
+    scheduler.add_task("health-check", "*/30 * * * *", health_check)
+    print(f"⏰ Cron 调度器已启动 ({scheduler.task_count} 个任务)", file=sys.stderr)
+    print("   Ctrl+C 停止", file=sys.stderr)
+
+    async def _run():
+        await scheduler.start()
+        try:
+            while True:
+                await _asyncio.sleep(1)
+        except _asyncio.CancelledError:
+            pass
+
+    try:
+        _asyncio.run(_run())
+    except KeyboardInterrupt:
+        print("\n⏹ Cron 已停止", file=sys.stderr)
 
 
 async def main_interactive():
