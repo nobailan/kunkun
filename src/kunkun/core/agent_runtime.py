@@ -117,27 +117,6 @@ class AgentMessage:
     data: dict | None = None
 
 
-class AgentMailbox:
-    """异步信箱 — 1:1 通信 (子 Agent → 父 Agent)."""
-
-    def __init__(self):
-        import queue as _queue
-        from concurrent.futures import ThreadPoolExecutor
-
-        self._queue: _queue.Queue[AgentMessage] = _queue.Queue()
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mailbox")
-
-    def put(self, msg: AgentMessage) -> None:
-        self._queue.put(msg)
-
-    async def get(self) -> AgentMessage:
-        import asyncio as _asyncio
-        return await _asyncio.get_event_loop().run_in_executor(self._executor, self._queue.get)
-
-    def close(self) -> None:
-        self._executor.shutdown(wait=False)
-
-
 # ─── AgentBus (多订阅者) ────────────────────────────────
 
 
@@ -264,20 +243,9 @@ class KunkunHarness(AgentRuntime):
     保证主 Agent 和子 Agent 之间不会互相干扰.
     """
 
-    # 共享线程池 (所有 Harness 实例共用)
-    _executor: Any = None
-
     def __init__(self, name: str, role: TeamRole, config: Any):
         super().__init__(name, role)
         self.config = config
-
-    @classmethod
-    def _get_executor(cls):
-        """懒加载共享线程池."""
-        if cls._executor is None:
-            from concurrent.futures import ThreadPoolExecutor
-            cls._executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="kunkun-sub")
-        return cls._executor
 
     async def run(self, prompt: str) -> AsyncGenerator[str, None]:
         """执行任务 (同 event loop, 独立 httpx 连接)."""

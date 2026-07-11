@@ -70,7 +70,9 @@ cp .env.example .env
 | v0.5 DS 创新 | ✅ | ThinkBlock 过程评测 (AgentThink) |
 | v0.6 DS 创新 | ✅ | GRPO 多版本生成 + 事件分发重构 |
 | v0.7 DS 创新 | ✅ | Prompt 粒度编译器 + AdaRubric 评测 + AgentTeam + 思考控制 |
-| v0.8 评测可视化 | 计划中 | HTML 仪表盘: 思考质量图表 + 工具时间线 + 维度雷达图 + FlowForge 接入 |
+| v0.8 评测可视化 | ✅ | HTML 仪表盘 + FlowForge 适配 + AgentBus |
+| v0.9 自动化 | ✅ | Workflow + Cron + MCP + System Prompt 精简 |
+| v0.10 TUI/GUI | 计划中 | 终端 TUI 美化 + 桌面 GUI |
 
 ## 工具 (16 个)
 
