@@ -46,6 +46,7 @@ from kunkun.core.state import (
     ToolResult,
 )
 from kunkun.memory.manager import MemoryManager
+from kunkun.memory.store import MessageStore
 from kunkun.routing.cost_router import CostRouter
 from kunkun.core.background_review import BackgroundReviewer
 from kunkun.skills.loader import SkillLoader
@@ -100,6 +101,8 @@ class AgentLoop:
             session_id=self.state.session_id,
         )
         self.memory = MemoryManager(memory_dir=config.memory_dir)
+        # v0.9: FTS5 跨会话搜索
+        self.message_store = MessageStore(db_path=".kun/messages.db")
         # v0.3.1: Skill 使用量追踪 + 生命周期管理
         self.skill_usage = SkillUsageStore(skill_dir=config.skill_dir)
         self.skills = SkillLoader(skill_dir=config.skill_dir, usage_store=self.skill_usage)
@@ -485,6 +488,24 @@ class AgentLoop:
         # v0.5: ThinkBlock 过程评测 (background, fire-and-forget)
         self._pending_eval_task = asyncio.create_task(self._run_thinking_eval())
 
+        # v0.9: 保存会话到 FTS5
+        self.message_store.save_session(
+            session_id=self.state.session_id,
+            prompt=prompt[:500],
+            model=self.state.model,
+            turns=self.state.current_turn,
+            total_tokens=self.state.total_token_count,
+            tool_calls=len(self.state.tool_calls),
+        )
+        for msg in self.state.messages:
+            if msg.role.value in ("user", "assistant"):
+                self.message_store.save_message(
+                    session_id=self.state.session_id,
+                    role=msg.role.value,
+                    content=str(msg.content)[:4000] if isinstance(msg.content, (str, list)) else str(msg.content)[:4000],
+                    timestamp=datetime.fromtimestamp(msg.timestamp).isoformat() if msg.timestamp else "",
+                )
+
         # v0.2: 刷新执行日志
         log_path = self.execution_log.flush()
 
@@ -507,6 +528,7 @@ class AgentLoop:
             except Exception:
                 pass
         await self.llm.close()
+        self.message_store.close()
 
     # ─── 内部方法 ────────────────────────────────
 

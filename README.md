@@ -71,7 +71,7 @@ cp .env.example .env
 | v0.6 DS 创新 | ✅ | GRPO 多版本生成 + 事件分发重构 |
 | v0.7 DS 创新 | ✅ | Prompt 粒度编译器 + AdaRubric 评测 + AgentTeam + 思考控制 |
 | v0.8 评测可视化 | ✅ | HTML 仪表盘 + FlowForge 适配 + AgentBus |
-| v0.9 自动化 | ✅ | Workflow + Cron + MCP + System Prompt 精简 |
+| v0.9 自动化 | ✅ | Workflow + Cron + MCP + FTS5 跨会话搜索 |
 | v0.10 TUI/GUI | 计划中 | 终端 TUI 美化 + 桌面 GUI |
 
 ## 工具 (16 个)

@@ -19,6 +19,7 @@ from kunkun.tools.edit_tool import edit_tool
 from kunkun.tools.web_tools import websearch_tool, webfetch_tool
 from kunkun.tools.agent_tool import agent_tool, todowrite_tool, grpo_tool, fastslow_tool, team_tool
 from kunkun.tools.code_intel_tool import findsymbol_tool, gotodef_tool, findrefs_tool
+from kunkun.tools.session_search_tool import session_search_tool
 
 
 def init_tools() -> ToolRegistry:
@@ -61,5 +62,8 @@ def init_tools() -> ToolRegistry:
     registry.register(findsymbol_tool._tool_instance)
     registry.register(gotodef_tool._tool_instance)
     registry.register(findrefs_tool._tool_instance)
+
+    # v0.9 FTS5 会话搜索
+    registry.register(session_search_tool._tool_instance)
 
     return registry
