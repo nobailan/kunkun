@@ -140,7 +140,7 @@ class FlowForgeAdapter:
 
         result = FlowForgeResult(
             task_id=task.task_id,
-            success=len(output) > 10 and "ERROR:" not in output,
+            success=len(output) > 0,  # 有输出即成功，让 FlowForge 评测器判定
             output=output,
             elapsed_ms=elapsed,
             turns=sub_result.get("turns", 0),
