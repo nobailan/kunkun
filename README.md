@@ -9,17 +9,17 @@
 
 ## 演示
 
-![Thinking 可视化 + 工具调用](document/screenshots/thinking可视化.png)
+![Thinking 可视化 + 工具调用](document/screenshots/01-thinking-demo.png)
 
-*DSv4 思考过程实时可见 + 多工具协作执行*
+*DSv4 思考过程实时可见*
 
-| 仪表盘 | 记忆自进化 |
-|--------|------------|
-| ![评测仪表盘](document/screenshots/仪表盘.png) | ![记忆自动提取](document/screenshots/记忆自动提取.png) |
+| 多工具协作 | 仪表盘 |
+|------------|--------|
+| ![多工具协作](document/screenshots/02-tool-execution.png) | ![评测仪表盘](document/screenshots/03-dashboard.png) |
 
-| 记忆召回 |
-|----------|
-| ![记忆召回](document/screenshots/记忆召回.png) |
+| 记忆自动提取 | 记忆召回 |
+|-------------|----------|
+| ![记忆自动提取](document/screenshots/04-auto-memory.png) | ![记忆召回](document/screenshots/05-memory-recall.png) |
 
 ---
 
