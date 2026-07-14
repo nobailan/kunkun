@@ -2,13 +2,12 @@
 
 借鉴:
 - Claude Code s09 Memory System — 文件级 .memory/*.md + YAML frontmatter
-- Claude Code MEMORY.md 索引机制
-- Hermes FTS5 全文搜索 (v0.2 保留接口，可选启用)
+- Hermes MemoryStore — 双轨存储 + 字符上限 + consolidation
 
-设计:
-- 每个记忆一个 .md 文件，包含 YAML frontmatter
-- 使用 name + description 做关键词匹配
-- MEMORY.md 作为索引文件
+v0.9 新增:
+- MEMORY.md (2200 chars) / USER.md (1375 chars) 双轨存储
+- 字符上限 + 满时提示整理
+- on_pre_compress 压缩前提取
 """
 
 from __future__ import annotations
@@ -22,6 +21,10 @@ from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# v0.9: 字符上限 (借鉴 Hermes)
+MEMORY_CHAR_LIMIT = 2200
+USER_CHAR_LIMIT = 1375
 
 # ─── 数据模型 ──────────────────────────────────────
 
@@ -45,10 +48,15 @@ class Memory:
     content: str
     metadata: dict = field(default_factory=dict)
     file_path: str = ""
+    target: str = "memory"  # "memory" | "user"
 
     @property
     def memory_type(self) -> str:
         return self.metadata.get("type", "project")
+
+    @property
+    def char_limit(self) -> int:
+        return USER_CHAR_LIMIT if self.target == "user" else MEMORY_CHAR_LIMIT
 
     @classmethod
     def from_md(cls, path: Path) -> "Memory | None":
@@ -258,6 +266,42 @@ class MemoryManager:
 
         return score
 
+    @staticmethod
+    def _content_similarity(text1: str, text2: str) -> float:
+        """计算两段文本的内容相似度 (0.0 ~ 1.0).
+
+        使用字符级 bigram Jaccard 相似度，同时兼容中英文。
+        - 中文：2-gram 滑动窗口
+        - 英文：单词级 bigram
+        返回 0.0（完全不同）到 1.0（完全相同）。
+        """
+        if not text1 or not text2:
+            return 0.0
+
+        # 归一化：小写 + 去多余空白
+        t1 = text1.lower().strip()
+        t2 = text2.lower().strip()
+
+        if t1 == t2:
+            return 1.0
+
+        # 用字符 bigram 做统一的 n-gram 提取（兼容中英文）
+        def bigrams(s: str) -> set:
+            # 先用空白规范化
+            chars = s.replace('\n', ' ').replace('\r', ' ')
+            # 合并连续空格
+            import re
+            chars = re.sub(r'\s+', ' ', chars)
+            return {chars[i:i+2] for i in range(len(chars) - 1)}
+
+        b1, b2 = bigrams(t1), bigrams(t2)
+        if not b1 or not b2:
+            return 0.0
+
+        intersection = len(b1 & b2)
+        union = len(b1 | b2)
+        return intersection / union if union > 0 else 0.0
+
     def format_for_system_prompt(self, memories: list[Memory]) -> str:
         """将记忆元数据（name + description）注入 System Prompt.
 
@@ -273,43 +317,95 @@ class MemoryManager:
         if not memories:
             return ""
 
-        lines = [
-            "\n## 可用记忆索引",
-            f"共 {len(memories)} 条。当判断某条记忆与当前任务相关时，"
-            "用 recall 工具获取全文。",
-            "",
-        ]
-        for mem in memories:
-            desc = mem.description[:120]  # 截断描述
-            lines.append(f"- **{mem.name}**: {desc}")
+        # v0.9: 双轨展示: USER 优先
+        user_mems = [m for m in memories if m.target == "user"]
+        proj_mems = [m for m in memories if m.target != "user"]
 
-        lines.append("")
+        lines = []
+        if user_mems:
+            lines.append("\n## 用户画像")
+            lines.append(f"共 {len(user_mems)} 条 (上限 {USER_CHAR_LIMIT} chars)。")
+            for mem in user_mems:
+                lines.append(f"- **{mem.name}**: {mem.description[:120]}")
+            lines.append("")
+
+        if proj_mems:
+            lines.append("\n## 项目记忆")
+            lines.append(f"共 {len(proj_mems)} 条 (上限 {MEMORY_CHAR_LIMIT} chars)。")
+            lines.append("当判断某条记忆与当前任务相关时，用 recall 工具获取全文。")
+            for mem in proj_mems:
+                lines.append(f"- **{mem.name}**: {mem.description[:120]}")
+            lines.append("")
 
         return "\n".join(lines)
 
     # ─── 写入 ───────────────────────────────────
 
-    def save(self, memory: Memory) -> Path:
-        """保存记忆到文件.
+    def save(self, memory: Memory, dedup: bool = True) -> tuple[Path, str]:
+        """保存记忆到文件, 返回 (路径, 状态信息).
+
+        v0.9: 同名冲突保护 — 检测与已有记忆的同名冲突：
+        - 内容高度相似 (>80%) → 跳过，返回 "已存在" 状态
+        - 内容不同但同名 → 合并追加（用时间戳分隔线隔开）
+        - 无冲突 → 正常保存
 
         Args:
             memory: 要保存的记忆
-
-        Returns:
-            文件路径
+            dedup: 是否启用去重检测（默认 True）
         """
         self.memory_dir.mkdir(parents=True, exist_ok=True)
+
+        # ── v0.9: 同名冲突检测 ──
+        existing = self._index.get(memory.name)
+        dedup_status = ""  # 附加状态信息
+        if dedup and existing is not None:
+            similarity = self._content_similarity(existing.content, memory.content)
+            if similarity > 0.8:
+                # 内容高度相似 → 跳过
+                logger.info(
+                    "Skipped duplicate memory '%s' (similarity=%.0f%%)",
+                    memory.name, similarity * 100,
+                )
+                return (
+                    self.memory_dir / f"{memory.name}.md",
+                    f"⏭️ 记忆 '{memory.name}' 已存在且内容高度相似 ({similarity:.0%})，跳过。",
+                )
+            else:
+                # 内容不同但同名 → 合并追加
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+                merged_content = (
+                    existing.content.rstrip()
+                    + f"\n\n---\n\n## 补充 ({timestamp})\n\n"
+                    + memory.content
+                )
+                memory.content = merged_content
+                dedup_status = (
+                    f" 🔗 与已有记忆 '{memory.name}' 合并 (相似度 {similarity:.0%})。"
+                )
+
+        # 计算同 target 的已有记忆总字符数
+        same_target = [m for m in self._memories if m.target == memory.target]
+        current_total = sum(len(m.content) for m in same_target)
+        limit = memory.char_limit
 
         filename = self.memory_dir / f"{memory.name}.md"
         filename.write_text(memory.to_md(), encoding="utf-8")
 
-        # 更新内存索引
         self._index[memory.name] = memory
         memory.file_path = str(filename)
 
+        status = ""
+        if current_total + len(memory.content) > limit:
+            pct = min(100, int((current_total + len(memory.content)) / limit * 100))
+            status = (
+                f"⚠️ {memory.target.upper()} 存储 {pct}% 满 ({current_total + len(memory.content)}/{limit} chars)。"
+                f"考虑用 remember 的 operations 批量操作整理冗余条目。"
+            )
+
         logger.info("Saved memory: %s → %s", memory.name, filename)
         self._update_index_file()
-        return filename
+        return filename, status + dedup_status
 
     def delete(self, name: str) -> bool:
         """删除记忆.
@@ -400,10 +496,16 @@ async def extract_memories_from_conversation(
     messages: list,
     memory_manager: MemoryManager,
 ) -> list[Memory]:
-    """从对话中提取新记忆 (v0.2 占位，v0.5+ LLM 提取).
+    """从对话中提取新记忆（便捷函数）。
 
-    v0.2 实现: 手动标记 (`/remember` 命令)
-    v0.5+ 实现: LLM 自动提取
+    实际提取逻辑在 kunkun.core.background_review.BackgroundReviewer 中：
+    - review_turn(): 每轮结束后的后台反思（多轮上下文 + 全文去重）
+    - extract_before_compress(): 上下文压缩前的紧急提取（on_pre_compress hook）
+
+    本函数保留作为 API 入口，供外部直接调用。使用方式：
+        reviewer = BackgroundReviewer(memory_manager, skill_loader, llm_client)
+        await reviewer.review_turn(conversation_snapshot)
     """
-    # v0.2: 返回空列表，记忆由用户手动管理
+    # 返回空列表——实际提取由 BackgroundReviewer 异步完成。
+    # 此函数可用于同步场景的内存提取（未来可在此接入同步提取逻辑）。
     return []

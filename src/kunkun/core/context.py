@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Callable
 
 from kunkun.core.state import HarnessConfig, Message, MessageRole, ContentType
 
@@ -71,7 +72,10 @@ class ContextManager:
 
     # ─── 公共 API ────────────────────────────────
 
-    def trim(self, messages: list[Message]) -> list[Message]:
+    def trim(
+        self, messages: list[Message],
+        on_skip: "Callable[[list[Message]], None] | None" = None,
+    ) -> list[Message]:
         """按轮次滑动窗口裁剪消息历史.
 
         策略 (借鉴 20 题库 SlidingWindowManager 修复版):
@@ -87,8 +91,13 @@ class ContextManager:
         - bug②: token 预算不再被 tool 挤占 → 分配可预测
         - bug③: min_tool_keep 只作用于已选窗口内 → 不会越界拉入无上下文的旧 tool
 
+        v0.9 P0: on_skip 回调 — 当消息即将被裁剪丢弃时，
+        调用 on_skip(messages_to_discard) 以便 BackgroundReviewer
+        在丢弃前提取关键记忆（借鉴 Hermes on_pre_compress）。
+
         Args:
             messages: 完整消息历史
+            on_skip: 可选回调，接收即将被丢弃的消息列表
 
         Returns:
             裁剪后的消息列表
@@ -207,6 +216,15 @@ class ContextManager:
             tools_to_remove = tools_sorted[:-self.min_tool_keep]
             for i in tools_to_remove:
                 kept.discard(i)
+
+        # ── Step 4.5: 通知即将丢弃的消息（on_pre_compress hook）──
+        if on_skip is not None:
+            skipped_msgs = [messages[i] for i in range(n) if i not in kept]
+            if skipped_msgs:
+                try:
+                    on_skip(skipped_msgs)
+                except Exception:
+                    logger.debug("on_skip callback failed (non-fatal)", exc_info=True)
 
         # ── Step 5: 构建输出 ──
         result: list[Message] = []

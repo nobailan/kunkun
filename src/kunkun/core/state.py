@@ -181,6 +181,7 @@ class HarnessConfig:
     max_tokens_per_turn: int = 64000
     max_budget_usd: float = 5.0
     daily_budget_usd: float = 20.0
+    review_interval: int = 5  # v0.9: 每 N 个 user turn 触发一次中间 review
 
     # 路径配置
     workspace: str = "."

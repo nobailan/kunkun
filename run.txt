@@ -1,2 +1,144 @@
+# ============================================================
+# Kunkun 命令速查
+# ============================================================
+
+# ── 环境 ──
 conda activate graph
+
+
+# ============================================================
+# 一、启动模式
+# ============================================================
+
+# 交互模式（进入 REPL 循环）
 kunkun-interactive
+# 或
+kunkun
+
+# 交互模式带详细输出（显示 Thinking + 状态）
+kunkun -v
+
+# 单次执行
+kunkun "你的任务描述"
+
+# 单次执行 + 详细输出
+kunkun -v "你的任务描述"
+
+# 隐藏 Thinking 块
+kunkun --hide-thinking "你的任务描述"
+
+# 指定模型
+kunkun -m deepseek-v4-pro "你的任务描述"
+
+# 指定工作目录
+kunkun -w E:\other-project "你的任务描述"
+
+# 指定最大轮次
+kunkun --max-turns 30 "你的任务描述"
+
+# 生成 HTML 评测仪表盘（自动打开浏览器）
+kunkun --dashboard
+
+# FlowForge 模式（JSON 输出）
+kunkun --flowforge "你的任务描述"
+
+# Cron 调度器模式（后台运行，Ctrl+C 停止）
+kunkun --cron
+
+# 查看版本
+kunkun --version
+
+
+# ============================================================
+# 二、截图用命令
+# ============================================================
+
+# 1. Thinking 可视化 + 执行报告
+kunkun -v "分析 src/kunkun/core/agent_loop.py 的架构设计，指出优缺点"
+
+# 2. 仪表盘
+kunkun --dashboard
+
+# 3. 多工具协作
+kunkun -v "把 src/kunkun/core/background_review.py 里所有的 logger.debug 改成 logger.info"
+
+# 4. 记忆自动提取（注意末尾 💾 行）
+kunkun -v "以后所有 Python 代码用 4 空格缩进，遵循 PEP 8，记住这个偏好"
+
+# 5. 记忆召回
+kunkun "搜索已保存的项目记忆，把关于 Python 风格的全文展示出来"
+
+
+# ============================================================
+# 三、日常使用示例
+# ============================================================
+
+# 代码分析
+kunkun "分析 src/kunkun/core/ 模块的架构，输出依赖关系"
+kunkun -v "逐一分析 src/kunkun/core/ 下每个 .py 文件的职责，输出一个模块依赖关系表"
+
+# 代码修改
+kunkun -v "把 src/kunkun/tools/ 下所有文件中 logger.warning 改成 logger.info"
+kunkun "重构 src/kunkun/memory/manager.py，把 _relevance_score 方法改为使用正则匹配"
+
+# 搜索类
+kunkun "在项目中搜索所有使用 asyncio.create_task 的地方"
+kunkun "找出所有定义了 __init__ 且参数超过 3 个的类"
+
+# 文档生成
+kunkun "为 src/kunkun/core/ 下的所有公开 API 生成中文 docstring"
+
+# 调试类
+kunkun "检查 src/kunkun/core/agent_loop.py 中的异步任务是否有资源泄漏风险"
+
+# 批量操作
+kunkun "把所有 .py 文件中的 import 语句按标准库 → 第三方 → 本地 三段排序"
+
+
+# ============================================================
+# 四、交互模式内可用命令
+# ============================================================
+
+# 退出交互模式
+#   输入 exit 或 quit 或 q 或 Ctrl+C
+
+# 工具调用（Agent 自动使用，用户无需手动调用）
+#   bash, read_file, write_file, glob, grep, edit
+#   remember, recall, skill_load
+#   websearch, webfetch
+#   agent, todowrite, grpo
+#   findsymbol, gotodef, findrefs, session_search
+
+# 记忆操作
+#   remember target=memory name=xxx content=xxx  → 保存事实
+#   remember target=skill name=xxx content=xxx   → 保存约定/规范
+#   recall query=xxx                              → 搜索记忆
+
+
+# ============================================================
+# 五、配置（.env 文件）
+# ============================================================
+
+# KUN_API_KEY=sk-...           # DeepSeek API 密钥（必填）
+# KUN_MODEL=deepseek-v4-pro    # 主模型
+# KUN_LIGHT_MODEL=deepseek-v4-flash  # 评测/反思用轻模型
+# KUN_BASE_URL=https://api.deepseek.com
+# KUN_WORKSPACE=.              # 工作目录
+# KUN_MAX_TURNS=50             # 最大轮次
+# KUN_MAX_TOKENS_PER_TURN=64000
+# KUN_PERMISSION_MODE=accept_edits  # default | accept_edits | bypass
+
+
+# ============================================================
+# 六、生成的文件
+# ============================================================
+
+# .kun/memory/*.md             # 记忆文件
+# .kun/memory/MEMORY.md        # 记忆索引
+# .kun/messages.db             # FTS5 跨会话搜索数据库
+# .kun/reports/*.json          # 执行日志
+# .kun/evaluations.jsonl       # 评测数据
+# .kun/dashboard.html          # 评测仪表盘（--dashboard 生成）
+# .kun/logs/kunkun.log         # 运行日志
+# skills/                      # Skill 目录
+# skills/.curator_state        # Curator 状态

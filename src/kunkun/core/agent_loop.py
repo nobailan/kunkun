@@ -115,6 +115,7 @@ class AgentLoop:
             llm_client=self.llm,
             skill_usage=self.skill_usage,
             light_model=config.light_model,
+            review_interval=config.review_interval,
         )
         self.retry_policy = RetryPolicy()
 
@@ -268,7 +269,11 @@ class AgentLoop:
                 )
 
             # --- Pre-LLM: 上下文裁剪 ---
-            trimmed_messages = self.context_mgr.trim(self.state.messages)
+            # v0.9 P0: on_pre_compress hook — 裁剪前从即将丢弃的消息中提取记忆
+            trimmed_messages = self.context_mgr.trim(
+                self.state.messages,
+                on_skip=self._make_compress_hook(),
+            )
             # v0.3.1: 使用 Frozen Snapshot (首次构建, 后续复用)
             system_prompt = self._frozen_prompt or self.context_mgr.build_system_prompt()
             tool_schemas = self.tools.schemas()
@@ -344,12 +349,17 @@ class AgentLoop:
 
             if sr_result.action == "break":
                 final_result = sr_result.final_result or full_text
-                self.reviewer.schedule_review(prompt, final_result)
+                # v0.9 P0: 会话结束 → 强制触发 review
+                snapshot = self._build_conversation_snapshot()
+                self.reviewer.schedule_review(snapshot, force=True)
                 break
 
             elif sr_result.action == "break_warn":
                 yield Event.warning(sr_result.message)
                 final_result = sr_result.final_result or full_text
+                # v0.9: break_warn 也需要触发 review（与 break 路径保持一致）
+                snapshot = self._build_conversation_snapshot()
+                self.reviewer.schedule_review(snapshot, force=True)
                 break
 
             elif sr_result.action == "continue":
@@ -431,6 +441,11 @@ class AgentLoop:
                         self.thinking_eval.record(ev_tr)
 
                     # v0.3.1: Frozen Snapshot — 写入只落盘，不更新 System Prompt
+
+                # v0.9: 中间检查点 — 长对话中定期触发 review（受节流控制）
+                # force=False: 由 review_interval (默认 5 轮) 控制是否实际触发
+                snapshot = self._build_conversation_snapshot()
+                self.reviewer.schedule_review(snapshot, force=False)
 
                 # 工具执行完，继续循环 (把结果送回 LLM)
                 continue
@@ -622,6 +637,103 @@ class AgentLoop:
         ctx.metadata["_config"] = self.config
         ctx.metadata["_agent_loop"] = self
         return ctx
+
+    def _make_compress_hook(self):
+        """创建 on_pre_compress 回调。
+
+        返回一个同步 callable，被 ContextManager.trim() 在丢弃消息前调用。
+        该回调将异步提取任务调度到事件循环中（fire-and-forget），
+        不阻塞主裁剪流程。
+
+        借鉴 Hermes MemoryProvider.on_pre_compress():
+        - 消息即将因窗口裁剪被永久遗忘
+        - 在丢弃前提取值得持久化的关键信息
+        - 直接写入 MemoryManager（因 Frozen Snapshot 机制，下次会话生效）
+        """
+        reviewer = self.reviewer
+        loop = asyncio.get_event_loop()
+
+        def _on_skip(skipped_messages: list) -> None:
+            if not skipped_messages:
+                return
+            # 转换为 dict 格式以便跨线程/跨上下文传递
+            msg_dicts = []
+            for m in skipped_messages:
+                role = getattr(m, "role", None)
+                role_str = role.value if hasattr(role, "value") else str(role)
+                content = getattr(m, "content", "")
+                if isinstance(content, list):
+                    # ContentBlock 列表 → 提取 text 部分
+                    text_parts = []
+                    for block in content:
+                        if hasattr(block, "type") and hasattr(block, "content"):
+                            if hasattr(block.type, "value"):
+                                if block.type.value == "text":
+                                    text_parts.append(str(block.content))
+                                elif block.type.value == "tool_use":
+                                    tool_name = getattr(block, "tool_name", "?")
+                                    text_parts.append(f"[Tool call: {tool_name}]")
+                            else:
+                                text_parts.append(str(block.content))
+                        elif hasattr(block, "content"):
+                            text_parts.append(str(block.content))
+                    content = "\n".join(text_parts)
+                msg_dicts.append({"role": role_str, "content": str(content)})
+
+            # Fire-and-forget: 调度异步提取任务
+            try:
+                loop.create_task(reviewer.extract_before_compress(msg_dicts))
+            except RuntimeError:
+                # 事件循环已关闭
+                pass
+            except Exception as e:
+                logger.debug("Failed to schedule compress hook: %s", e)
+
+        return _on_skip
+
+    def _build_conversation_snapshot(self) -> list[dict]:
+        """构建对话快照（dict 格式），用于 BackgroundReviewer。
+
+        从 self.state.messages 中提取最近的消息，
+        转换为 [{role, content}, ...] 格式。
+        Message.content 可能是 str 或 ContentBlock 列表，统一转为纯文本。
+        """
+        snapshot = []
+        for msg in self.state.messages:
+            role = getattr(msg, "role", None)
+            role_str = role.value if hasattr(role, "value") else str(role)
+
+            content = getattr(msg, "content", "")
+            if isinstance(content, list):
+                # ContentBlock 列表 → 提取可读文本
+                text_parts = []
+                for block in content:
+                    if hasattr(block, "type") and hasattr(block, "content"):
+                        if hasattr(block.type, "value"):
+                            if block.type.value == "text":
+                                text_parts.append(str(block.content))
+                            elif block.type.value == "tool_use":
+                                tool_name = getattr(block, "tool_name", "?")
+                                tool_input = getattr(block, "content", {})
+                                text_parts.append(f"[调用工具: {tool_name}({str(tool_input)[:200]})]")
+                            elif block.type.value == "tool_result":
+                                is_err = getattr(block, "is_error", False)
+                                prefix = "[工具错误]" if is_err else "[工具结果]"
+                                text_parts.append(f"{prefix}: {str(block.content)[:500]}")
+                            else:
+                                text_parts.append(str(block.content)[:500])
+                        else:
+                            text_parts.append(str(block.content)[:500])
+                    elif hasattr(block, "content"):
+                        text_parts.append(str(block.content)[:500])
+                content = "\n".join(text_parts) if text_parts else ""
+            else:
+                content = str(content)
+
+            if content.strip():  # 跳过空消息
+                snapshot.append({"role": role_str, "content": content})
+
+        return snapshot
 
     def _error_tool_result(self, tool_use_id: str, message: str) -> Message:
         """生成工具错误结果消息."""
